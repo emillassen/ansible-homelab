@@ -1,0 +1,10 @@
+---
+# Services that ping as their own user (Uptime Kuma, Homepage) need ICMP sockets, and an
+# unprivileged container leaves ping_group_range at 65534 65534. Open it to every GID the
+# container maps; systemd's usual 0 2147483647 is rejected outside the GID map.
+- name: Allow unprivileged ping
+  ansible.posix.sysctl:
+    name: net.ipv4.ping_group_range
+    value: "0 65535"
+    sysctl_file: /etc/sysctl.d/60-ping-group.conf
+    sysctl_set: true
