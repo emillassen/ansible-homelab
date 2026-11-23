@@ -34,6 +34,8 @@ flock -n 9 || { echo "busy: another sync or run holds the lock" >&2; exit 75; }
 
 echo "== packages"
 apt update
+# A fresh image is behind; start current. unattended-upgrades keeps it there.
+DEBIAN_FRONTEND=noninteractive apt full-upgrade -y
 apt install -y ca-certificates curl git openssh-client python3 python3-venv rsync util-linux
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 13))' || { echo "needs Python 3.13+" >&2; exit 1; }
 

@@ -171,7 +171,7 @@ It asks for the vault password, applies `site.yml` to itself, then runs `check` 
 
 ### Proxmox host: controller access to the old guests
 
-Copying data needs the controller's key on every old guest, plus `rsync` and `python3`. The host keys are read through `pct` and the guest agent, so they are trusted without a first-use scan. Add the printed lines to `known_hosts`.
+Copying data needs the controller's key on every old guest, plus `rsync` and `python3`. Every `pct exec` and `qm guest exec` reads `/dev/null`; otherwise the first one swallows the rest of a paste. The host keys are read through `pct` and the guest agent, so they are trusted without a first-use scan. Add the printed lines to `known_hosts`.
 
 ```sh
 key='ssh-ed25519 AAAA… ansible-controller'
@@ -181,24 +181,24 @@ for id in 100 101 102 103 104 105 106 107 108 109 110 111 112; do
     install -d -m 700 /root/.ssh
     grep -qxF '$key' /root/.ssh/authorized_keys 2>/dev/null || echo '$key' >> /root/.ssh/authorized_keys
     chmod 600 /root/.ssh/authorized_keys
-    systemctl enable --now ssh"
+    systemctl enable --now ssh" </dev/null
 done
 for id in 100 101 110 111; do
-  pct exec $id -- ufw allow from 192.168.1.103 to any port 22 proto tcp comment 'ansible controller'
+  pct exec $id -- ufw allow from 192.168.1.103 to any port 22 proto tcp comment 'ansible controller' </dev/null
 done
 for id in 201 202 203 204 205 206 208; do
   qm guest exec $id --timeout 120 -- bash -c "
     grep -qxF '$key' /home/emil/.ssh/authorized_keys || echo '$key' >> /home/emil/.ssh/authorized_keys
-    command -v rsync >/dev/null || apt install -y rsync"
+    command -v rsync >/dev/null || apt install -y rsync" </dev/null
 done
 for p in 100:adguard-old 101:wireguard-old 102:bentopdf-old 103:mosquitto-old 104:zigbee2mqtt-old \
   105:esphome-old 106:homepage-old 107:smokeping-old 108:myspeed-old 109:changedetection-old \
   110:caddy-old 111:jellyfin-old 112:uptime-kuma-old; do
-  printf '%s %s\n' "${p#*:}" "$(pct exec ${p%%:*} -- cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+  printf '%s %s\n' "${p#*:}" "$(pct exec ${p%%:*} -- cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub </dev/null)"
 done
 for p in 201:immich-old 202:miniflux-linkding-old 203:audiobookshelf-old 204:grafana-loki-old \
   205:paperless-old 206:nextcloud-old 208:meshmonitor-old; do
-  printf '%s %s\n' "${p#*:}" "$(qm guest exec ${p%%:*} -- cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub |
+  printf '%s %s\n' "${p#*:}" "$(qm guest exec ${p%%:*} -- cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub </dev/null |
     python3 -c 'import json, sys; print(json.load(sys.stdin)["out-data"].strip())')"
 done
 ```
