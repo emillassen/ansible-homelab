@@ -34,3 +34,8 @@
   hosts: managed:&mosquitto
   roles:
     - mosquitto
+
+- name: MySpeed
+  hosts: managed:&myspeed
+  roles:
+    - myspeed

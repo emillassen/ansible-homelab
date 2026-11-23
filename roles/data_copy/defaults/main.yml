@@ -1,0 +1,10 @@
+---
+# Set by the calling role: a short name for the staging file and the directory to copy.
+data_copy_name: ""
+data_copy_path: ""
+# Owner of everything unpacked on the new guest.
+data_copy_owner: root
+data_copy_group: root
+data_copy_staging: /home/ansible/transfer
+# Optional. Stopped after the marker check and started again after the import.
+data_copy_service: ""

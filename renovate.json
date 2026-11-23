@@ -14,5 +14,12 @@
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\n\\S+: \"?(?<currentValue>[^\"\\n]+)\"?"
       ]
     }
+  ],
+  "packageRules": [
+    {
+      "description": "Release tags with a v prefix; the pins in role defaults are bare versions",
+      "matchPackageNames": ["gnmyt/myspeed"],
+      "extractVersion": "^v(?<version>.+)$"
+    }
   ]
 }

@@ -1,0 +1,11 @@
+---
+- name: Import the data directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: myspeed
+    data_copy_path: "{{ myspeed_data }}"
+    data_copy_owner: myspeed
+    data_copy_group: myspeed
+    data_copy_service: myspeed

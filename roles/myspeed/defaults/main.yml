@@ -1,0 +1,5 @@
+---
+# renovate: datasource=github-releases depName=gnmyt/myspeed
+myspeed_version: "1.0.9"
+myspeed_dir: /opt/myspeed
+myspeed_data: /opt/myspeed/data

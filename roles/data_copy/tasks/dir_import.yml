@@ -1,0 +1,53 @@
+---
+# On the new guest, with the app stopped. Unpacks into the directory and marks it imported.
+- name: Check for an earlier import
+  ansible.builtin.stat:
+    path: "{{ data_copy_path }}/.migrated"
+  register: data_copy_marker
+
+- name: Refuse a second import
+  ansible.builtin.assert:
+    that: not data_copy_marker.stat.exists
+    fail_msg: "Already imported. Delete {{ data_copy_path }}/.migrated on {{ inventory_hostname }} to import again."
+
+- name: Stop {{ data_copy_service }} before replacing its data
+  ansible.builtin.service:
+    name: "{{ data_copy_service }}"
+    state: stopped
+  when: data_copy_service != ""
+
+- name: Create {{ data_copy_path }}
+  ansible.builtin.file:
+    path: "{{ data_copy_path }}"
+    state: directory
+    owner: "{{ data_copy_owner }}"
+    group: "{{ data_copy_group }}"
+    mode: "0750"
+
+# The fetch doesn't run under --check, so there is nothing staged to unpack.
+- name: Unpack the archive
+  ansible.builtin.unarchive:
+    src: "{{ data_copy_staging }}/{{ data_copy_name }}.tar.gz"
+    dest: "{{ data_copy_path }}"
+    owner: "{{ data_copy_owner }}"
+    group: "{{ data_copy_group }}"
+  when: not ansible_check_mode
+
+- name: Mark the import done
+  ansible.builtin.copy:
+    content: ""
+    dest: "{{ data_copy_path }}/.migrated"
+    force: false
+    mode: "0644"
+
+- name: Start {{ data_copy_service }}
+  ansible.builtin.service:
+    name: "{{ data_copy_service }}"
+    state: started
+  when: data_copy_service != ""
+
+- name: Delete the staging copy
+  ansible.builtin.file:
+    path: "{{ data_copy_staging }}/{{ data_copy_name }}.tar.gz"
+    state: absent
+  delegate_to: localhost

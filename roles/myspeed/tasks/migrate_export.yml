@@ -1,0 +1,13 @@
+---
+- name: Stop MySpeed on the old guest
+  ansible.builtin.service:
+    name: myspeed
+    state: stopped
+
+- name: Export the data directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: myspeed
+    data_copy_path: "{{ myspeed_data }}"
