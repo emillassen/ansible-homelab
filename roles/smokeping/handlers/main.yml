@@ -4,6 +4,9 @@
 - name: Check the Smokeping config
   ansible.builtin.command:
     cmd: smokeping --check
+  # Smokeping refuses to start with LC_ALL set, and Ansible's SSH session sets it.
+  environment:
+    LC_ALL: ""
   changed_when: false
   listen: Restart smokeping
 
