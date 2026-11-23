@@ -1,0 +1,23 @@
+# Managed by Ansible.
+[Unit]
+Description=Uptime Kuma
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=uptime-kuma
+Group=uptime-kuma
+WorkingDirectory={{ uptime_kuma_dir }}
+Environment=NODE_ENV=production
+Environment=DATA_DIR={{ uptime_kuma_data }}/
+ExecStart=/usr/bin/node server/server.js
+Restart=always
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ uptime_kuma_data }}
+
+[Install]
+WantedBy=multi-user.target

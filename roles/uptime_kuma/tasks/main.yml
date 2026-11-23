@@ -1,0 +1,124 @@
+---
+- name: Install Node.js
+  ansible.builtin.apt:
+    name:
+      - nodejs
+      - npm
+      - iputils-ping
+    state: present
+
+- name: Create the uptime-kuma user
+  ansible.builtin.user:
+    name: uptime-kuma
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ uptime_kuma_data }}"
+    create_home: false
+
+- name: Create the app directory
+  ansible.builtin.file:
+    path: "{{ uptime_kuma_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The marker holds the installed version and is written last, so a Renovate bump, a
+# revert or a failed step unpacks and installs again on the next run.
+- name: Read the installed version
+  ansible.builtin.slurp:
+    src: "{{ uptime_kuma_dir }}/.version"
+  register: uptime_kuma_marker
+  failed_when: false
+
+- name: Decide whether to install
+  ansible.builtin.set_fact:
+    uptime_kuma_install: "{{ (uptime_kuma_marker.content | default('') | b64decode | trim) != uptime_kuma_version }}"
+
+- name: Check for the service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/uptime-kuma.service
+  register: uptime_kuma_unit
+
+# Don't swap the tree under a running process.
+- name: Stop Uptime Kuma for the upgrade
+  ansible.builtin.systemd_service:
+    name: uptime-kuma
+    state: stopped
+  when:
+    - uptime_kuma_install
+    - uptime_kuma_unit.stat.exists
+
+- name: Unpack the Uptime Kuma {{ uptime_kuma_version }} source
+  ansible.builtin.unarchive:
+    src: https://github.com/louislam/uptime-kuma/archive/refs/tags/{{ uptime_kuma_version }}.tar.gz
+    dest: "{{ uptime_kuma_dir }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    owner: root
+    group: root
+  # Under --check the app directory may not exist yet.
+  when:
+    - uptime_kuma_install
+    - not ansible_check_mode
+  notify: Restart uptime-kuma
+
+# The release ships the built frontend; this is what `npm run download-dist` fetches.
+- name: Remove the old frontend
+  ansible.builtin.file:
+    path: "{{ uptime_kuma_dir }}/dist"
+    state: absent
+  when: uptime_kuma_install
+
+- name: Unpack the Uptime Kuma {{ uptime_kuma_version }} frontend
+  ansible.builtin.unarchive:
+    src: https://github.com/louislam/uptime-kuma/releases/download/{{ uptime_kuma_version }}/dist.tar.gz
+    dest: "{{ uptime_kuma_dir }}"
+    remote_src: true
+    owner: root
+    group: root
+  when:
+    - uptime_kuma_install
+    - not ansible_check_mode
+
+- name: Install the dependencies
+  ansible.builtin.command:
+    cmd: npm ci --omit=dev --no-audit
+    chdir: "{{ uptime_kuma_dir }}"
+  # Under --check the directory may not exist yet, and command would be skipped anyway.
+  when:
+    - uptime_kuma_install
+    - not ansible_check_mode
+  notify: Restart uptime-kuma
+
+- name: Write the version marker
+  ansible.builtin.copy:
+    content: "{{ uptime_kuma_version }}\n"
+    dest: "{{ uptime_kuma_dir }}/.version"
+    mode: "0644"
+  when: uptime_kuma_install
+
+- name: Create the data directory
+  ansible.builtin.file:
+    path: "{{ uptime_kuma_data }}"
+    state: directory
+    owner: uptime-kuma
+    group: uptime-kuma
+    mode: "0750"
+
+- name: Write the service unit
+  ansible.builtin.template:
+    src: uptime-kuma.service.j2
+    dest: /etc/systemd/system/uptime-kuma.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart uptime-kuma
+
+- name: Start Uptime Kuma
+  ansible.builtin.systemd_service:
+    name: uptime-kuma
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode or uptime_kuma_unit.stat.exists

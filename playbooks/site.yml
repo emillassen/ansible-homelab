@@ -39,3 +39,8 @@
   hosts: managed:&myspeed
   roles:
     - myspeed
+
+- name: Uptime Kuma
+  hosts: managed:&uptime-kuma
+  roles:
+    - uptime_kuma

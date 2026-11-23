@@ -1,0 +1,14 @@
+---
+# Stopping first flushes the SQLite WAL into kuma.db.
+- name: Stop Uptime Kuma on the old guest
+  ansible.builtin.service:
+    name: uptime-kuma
+    state: stopped
+
+- name: Export the data directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: uptime-kuma
+    data_copy_path: "{{ uptime_kuma_data }}"

@@ -1,0 +1,5 @@
+---
+# renovate: datasource=github-releases depName=louislam/uptime-kuma
+uptime_kuma_version: "2.5.12"
+uptime_kuma_dir: /opt/uptime-kuma
+uptime_kuma_data: /opt/uptime-kuma/data

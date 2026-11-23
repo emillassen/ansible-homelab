@@ -1,0 +1,11 @@
+---
+- name: Import the data directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: uptime-kuma
+    data_copy_path: "{{ uptime_kuma_data }}"
+    data_copy_owner: uptime-kuma
+    data_copy_group: uptime-kuma
+    data_copy_service: uptime-kuma
