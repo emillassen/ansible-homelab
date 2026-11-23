@@ -66,6 +66,25 @@
     state: absent
   when: uptime_kuma_install
 
+# Everything but data/ goes, so files a version dropped don't linger or break the build.
+- name: Find the old app files
+  ansible.builtin.find:
+    paths: "{{ uptime_kuma_dir }}"
+    file_type: any
+    hidden: true
+    excludes: ["data"]
+  register: uptime_kuma_old
+  when: uptime_kuma_install
+
+- name: Remove the old app files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ uptime_kuma_old.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: uptime_kuma_install
+
 - name: Unpack the Uptime Kuma {{ uptime_kuma_version }} source
   ansible.builtin.unarchive:
     src: https://github.com/louislam/uptime-kuma/archive/refs/tags/{{ uptime_kuma_version }}.tar.gz
@@ -81,12 +100,6 @@
   notify: Restart uptime-kuma
 
 # The release ships the built frontend; this is what `npm run download-dist` fetches.
-- name: Remove the old frontend
-  ansible.builtin.file:
-    path: "{{ uptime_kuma_dir }}/dist"
-    state: absent
-  when: uptime_kuma_install
-
 - name: Unpack the Uptime Kuma {{ uptime_kuma_version }} frontend
   ansible.builtin.unarchive:
     src: https://github.com/louislam/uptime-kuma/releases/download/{{ uptime_kuma_version }}/dist.tar.gz

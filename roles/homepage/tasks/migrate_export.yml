@@ -1,0 +1,13 @@
+---
+- name: Stop Homepage on the old guest
+  ansible.builtin.service:
+    name: homepage
+    state: stopped
+
+- name: Export the config directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: homepage
+    data_copy_path: "{{ homepage_config }}"

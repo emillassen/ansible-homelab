@@ -1,0 +1,4 @@
+---
+# NodeSource major line. unattended-upgrades follows it within the major; a new major
+# is a deliberate bump here (check every role that uses this one).
+nodejs_major: 24

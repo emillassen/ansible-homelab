@@ -1,0 +1,25 @@
+# Managed by Ansible.
+[Unit]
+Description=Homepage
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=homepage
+Group=homepage
+WorkingDirectory={{ homepage_dir }}
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=HOMEPAGE_ALLOWED_HOSTS={{ homepage_allowed_hosts | join(',') }}
+ExecStart={{ homepage_dir }}/node_modules/.bin/next start -p 3000
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ homepage_config }} {{ homepage_dir }}/.next/cache
+
+[Install]
+WantedBy=multi-user.target

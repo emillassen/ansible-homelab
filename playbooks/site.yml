@@ -49,3 +49,9 @@
   hosts: managed:&bentopdf
   roles:
     - bentopdf
+
+- name: Homepage
+  hosts: managed:&homepage
+  roles:
+    - nodejs
+    - homepage

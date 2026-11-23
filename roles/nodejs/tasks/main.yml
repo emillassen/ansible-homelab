@@ -1,0 +1,45 @@
+---
+# The key is in the repo, so a rebuild doesn't trust whatever the server serves that day.
+# Fingerprint 6F71F525282841EEDAF851B42F59B5F99B1BE0B4, no expiry.
+- name: Install the NodeSource signing key
+  ansible.builtin.copy:
+    src: nodesource-repo.gpg
+    dest: /etc/apt/keyrings/nodesource.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the NodeSource Node.js {{ nodejs_major }} repo
+  ansible.builtin.deb822_repository:
+    name: nodesource
+    types: deb
+    uris: https://deb.nodesource.com/node_{{ nodejs_major }}.x
+    suites: nodistro
+    components: main
+    architectures: amd64
+    signed_by: /etc/apt/keyrings/nodesource.gpg
+  register: nodejs_repo
+  # base installs python3-debian, which the module needs; a fresh guest under --check has none yet.
+  when: not ansible_check_mode or 'python3-debian' in ansible_facts.packages
+
+# Debian's own nodejs is older, but pin anyway so a Debian point release never wins.
+- name: Prefer NodeSource for nodejs
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible.
+      Package: nodejs
+      Pin: origin deb.nodesource.com
+      Pin-Priority: 600
+    dest: /etc/apt/preferences.d/nodesource
+    owner: root
+    group: root
+    mode: "0644"
+
+# NodeSource's nodejs ships npm; Debian's npm package would conflict. The version
+# pattern makes a change of nodejs_major (either way) replace the installed Node.
+- name: Install Node.js {{ nodejs_major }}
+  ansible.builtin.apt:
+    name: nodejs={{ nodejs_major }}.*
+    update_cache: "{{ nodejs_repo is changed }}"
+    allow_downgrade: true
+    state: present

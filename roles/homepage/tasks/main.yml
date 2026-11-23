@@ -1,0 +1,161 @@
+---
+- name: Install pnpm {{ homepage_pnpm_version }}
+  community.general.npm:
+    name: pnpm
+    version: "{{ homepage_pnpm_version }}"
+    global: true
+  when: not ansible_check_mode or 'nodejs' in ansible_facts.packages
+
+- name: Create the homepage user
+  ansible.builtin.user:
+    name: homepage
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ homepage_config }}"
+    create_home: false
+
+- name: Create the app directory
+  ansible.builtin.file:
+    path: "{{ homepage_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The marker holds the installed version and is written last, so a Renovate bump, a
+# revert or a failed build installs again on the next run.
+- name: Read the installed version
+  ansible.builtin.slurp:
+    src: "{{ homepage_dir }}/.version"
+  register: homepage_marker
+  failed_when: false
+
+- name: Decide whether to build
+  ansible.builtin.set_fact:
+    homepage_install: "{{ (homepage_marker.content | default('') | b64decode | trim) != homepage_version }}"
+
+- name: Check for the service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/homepage.service
+  register: homepage_unit
+
+# Don't swap the tree under a running process.
+- name: Stop Homepage for the upgrade
+  ansible.builtin.systemd_service:
+    name: homepage
+    state: stopped
+  when:
+    - homepage_install
+    - homepage_unit.stat.exists
+
+# Cleared before the tree is touched, so a failed upgrade is never taken for the old version.
+- name: Clear the version marker
+  ansible.builtin.file:
+    path: "{{ homepage_dir }}/.version"
+    state: absent
+  when: homepage_install
+
+# Everything but config/ goes, so files a version dropped don't linger or break the build.
+- name: Find the old app files
+  ansible.builtin.find:
+    paths: "{{ homepage_dir }}"
+    file_type: any
+    hidden: true
+    excludes: ["config"]
+  register: homepage_old
+  when: homepage_install
+
+- name: Remove the old app files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ homepage_old.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: homepage_install
+
+- name: Unpack the Homepage {{ homepage_version }} source
+  ansible.builtin.unarchive:
+    src: https://github.com/gethomepage/homepage/archive/refs/tags/v{{ homepage_version }}.tar.gz
+    dest: "{{ homepage_dir }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    owner: root
+    group: root
+  # Under --check the app directory may not exist yet.
+  when:
+    - homepage_install
+    - not ansible_check_mode
+  notify: Restart homepage
+
+# pnpm-workspace.yaml lists which dependencies may run build scripts.
+- name: Install the dependencies
+  ansible.builtin.command:
+    cmd: pnpm install --frozen-lockfile
+    chdir: "{{ homepage_dir }}"
+  environment:
+    CI: "true"
+  when:
+    - homepage_install
+    - not ansible_check_mode
+
+- name: Build Homepage
+  ansible.builtin.command:
+    cmd: pnpm build
+    chdir: "{{ homepage_dir }}"
+  environment:
+    CI: "true"
+    NEXT_TELEMETRY_DISABLED: "1"
+    NEXT_PUBLIC_VERSION: v{{ homepage_version }}
+    NEXT_PUBLIC_REVISION: source
+  when:
+    - homepage_install
+    - not ansible_check_mode
+  notify: Restart homepage
+
+# The build runs as root and creates config/logs/homepage.log; hand it all back.
+- name: Give config/ to the homepage user
+  ansible.builtin.file:
+    path: "{{ homepage_config }}"
+    state: directory
+    recurse: true
+    owner: homepage
+    group: homepage
+  when: not ansible_check_mode or homepage_unit.stat.exists
+
+- name: Write the version marker
+  ansible.builtin.copy:
+    content: "{{ homepage_version }}\n"
+    dest: "{{ homepage_dir }}/.version"
+    mode: "0644"
+  when: homepage_install
+
+# Homepage writes the skeleton files and logs/ here; next start keeps its cache in .next/cache.
+- name: Create the writable directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: homepage
+    group: homepage
+    mode: "0750"
+  loop:
+    - "{{ homepage_config }}"
+    - "{{ homepage_dir }}/.next/cache"
+  when: not ansible_check_mode or homepage_unit.stat.exists
+
+- name: Write the service unit
+  ansible.builtin.template:
+    src: homepage.service.j2
+    dest: /etc/systemd/system/homepage.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart homepage
+
+- name: Start Homepage
+  ansible.builtin.systemd_service:
+    name: homepage
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode or homepage_unit.stat.exists
