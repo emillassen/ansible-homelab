@@ -43,5 +43,5 @@
     update_cache: "{{ nodejs_repo is changed }}"
     allow_downgrade: true
     state: present
-  # Without the repo (a fresh guest under --check) there's no candidate to check against.
-  when: nodejs_repo is not skipped
+  # Under --check a repo that isn't there yet (skipped, or would be added) gives no candidate.
+  when: not ansible_check_mode or (nodejs_repo is not skipped and nodejs_repo is not changed)
