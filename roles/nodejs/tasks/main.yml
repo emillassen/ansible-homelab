@@ -43,3 +43,5 @@
     update_cache: "{{ nodejs_repo is changed }}"
     allow_downgrade: true
     state: present
+  # Without the repo (a fresh guest under --check) there's no candidate to check against.
+  when: nodejs_repo is not skipped
