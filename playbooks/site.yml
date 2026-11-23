@@ -29,3 +29,8 @@
   hosts: managed:&smokeping
   roles:
     - smokeping
+
+- name: Mosquitto
+  hosts: managed:&mosquitto
+  roles:
+    - mosquitto

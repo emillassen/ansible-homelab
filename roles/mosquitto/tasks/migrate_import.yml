@@ -1,0 +1,48 @@
+---
+- name: Check for an earlier import
+  ansible.builtin.stat:
+    path: /var/lib/mosquitto/.migrated
+  register: mosquitto_migrated
+
+- name: Refuse a second import
+  ansible.builtin.assert:
+    that: not mosquitto_migrated.stat.exists
+    fail_msg: "Already imported. Delete /var/lib/mosquitto/.migrated on {{ inventory_hostname }} to import again."
+
+- name: Stop Mosquitto before replacing its files
+  ansible.builtin.service:
+    name: mosquitto
+    state: stopped
+
+- name: Copy the password file and the database
+  ansible.builtin.copy:
+    src: "{{ mosquitto_staging }}/{{ item | basename }}"
+    dest: "{{ item }}"
+    owner: mosquitto
+    group: mosquitto
+    mode: "0600"
+  diff: false
+  # The fetch doesn't run under --check, so there is nothing staged to copy.
+  when: not ansible_check_mode
+  loop:
+    - "{{ mosquitto_passwd }}"
+    - "{{ mosquitto_db }}"
+
+- name: Mark the import done
+  ansible.builtin.copy:
+    content: ""
+    dest: /var/lib/mosquitto/.migrated
+    force: false
+    mode: "0644"
+
+- name: Start Mosquitto
+  ansible.builtin.service:
+    name: mosquitto
+    state: started
+    enabled: true
+
+- name: Delete the staging copy
+  ansible.builtin.file:
+    path: "{{ mosquitto_staging }}"
+    state: absent
+  delegate_to: localhost

@@ -1,0 +1,4 @@
+# Managed by Ansible. persistence and the log file are set in mosquitto.conf.
+listener {{ mosquitto_listen_port }}
+allow_anonymous false
+password_file {{ mosquitto_passwd }}

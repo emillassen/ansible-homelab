@@ -1,0 +1,36 @@
+---
+# On the old guest. Stopping the broker writes mosquitto.db and starts the outage.
+# Under --check nothing is stopped or fetched; the stat shows what would be copied.
+- name: Read the files to copy
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ mosquitto_passwd }}"
+    - "{{ mosquitto_db }}"
+  register: mosquitto_export_files
+
+- name: Check that both files exist
+  ansible.builtin.assert:
+    that: mosquitto_export_files.results | map(attribute='stat.exists') | min
+    fail_msg: "{{ mosquitto_passwd }} or {{ mosquitto_db }} is missing on {{ inventory_hostname }}"
+
+- name: Stop Mosquitto on the old guest
+  ansible.builtin.service:
+    name: mosquitto
+    state: stopped
+
+- name: Create the staging directory on the controller
+  ansible.builtin.file:
+    path: "{{ mosquitto_staging }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+
+- name: Fetch the password file and the database
+  ansible.builtin.fetch:
+    src: "{{ item }}"
+    dest: "{{ mosquitto_staging }}/"
+    flat: true
+  loop:
+    - "{{ mosquitto_passwd }}"
+    - "{{ mosquitto_db }}"

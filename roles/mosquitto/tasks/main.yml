@@ -1,0 +1,53 @@
+---
+# The key is in the repo, so a rebuild doesn't trust whatever the server serves that day.
+# Fingerprint 8277CCB49EC5B595F2D2C71361611AE430993623, expires 2030-07-10.
+- name: Install the mosquitto.org signing key
+  ansible.builtin.copy:
+    src: mosquitto-repo.gpg
+    dest: /etc/apt/keyrings/mosquitto.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the mosquitto.org repo
+  ansible.builtin.deb822_repository:
+    name: mosquitto
+    types: deb
+    uris: https://repo.mosquitto.org/debian
+    suites: "{{ ansible_facts.distribution_release }}"
+    components: main
+    signed_by: /etc/apt/keyrings/mosquitto.gpg
+  register: mosquitto_repo
+  # base installs python3-debian, which the module needs; a fresh guest under --check has none yet.
+  when: not ansible_check_mode or 'python3-debian' in ansible_facts.packages
+
+- name: Install Mosquitto
+  ansible.builtin.apt:
+    name:
+      - mosquitto
+      - mosquitto-clients
+    update_cache: "{{ mosquitto_repo is changed }}"
+    state: present
+
+- name: Write the listener config
+  ansible.builtin.template:
+    src: local.conf.j2
+    dest: /etc/mosquitto/conf.d/local.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mosquitto
+  when: not ansible_check_mode or 'mosquitto' in ansible_facts.packages
+
+- name: Check for the password file
+  ansible.builtin.stat:
+    path: "{{ mosquitto_passwd }}"
+  register: mosquitto_passwd_file
+
+# Mosquitto won't start without its password file, which arrives with `run migrate`.
+- name: Start Mosquitto once it has its password file
+  ansible.builtin.service:
+    name: mosquitto
+    state: "{{ 'started' if mosquitto_passwd_file.stat.exists else 'stopped' }}"
+    enabled: "{{ mosquitto_passwd_file.stat.exists }}"
+  when: not ansible_check_mode or 'mosquitto' in ansible_facts.packages

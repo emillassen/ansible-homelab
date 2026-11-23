@@ -3,6 +3,8 @@ base_packages:
   - ca-certificates
   - locales
   - openssh-server
+  # For ansible.builtin.deb822_repository.
+  - python3-debian
   - rsync
   - unattended-upgrades
 base_lc_vars:
