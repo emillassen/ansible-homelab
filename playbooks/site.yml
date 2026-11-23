@@ -7,6 +7,8 @@
     - name: Wait until the guest accepts a login
       ansible.builtin.wait_for_connection:
         timeout: 300
+      # Skipped under --check otherwise, and check would hit the boot window.
+      check_mode: false
 
     - name: Gather facts
       ansible.builtin.setup:

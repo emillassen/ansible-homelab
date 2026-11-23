@@ -20,8 +20,13 @@
     state: present
   when: not ansible_check_mode or 'locales' in ansible_facts.packages
 
-- name: Write /etc/default/locale
+# Debian 13 and Ubuntu 26.04 keep the locale in /etc/locale.conf and copy it over
+# /etc/default/locale when the locales package is configured. Both get the same text.
+- name: Write the locale files
   ansible.builtin.template:
     src: locale.j2
-    dest: /etc/default/locale
+    dest: "{{ item }}"
     mode: "0644"
+  loop:
+    - /etc/locale.conf
+    - /etc/default/locale
