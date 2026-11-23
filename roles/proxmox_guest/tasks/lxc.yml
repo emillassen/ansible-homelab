@@ -76,6 +76,8 @@
   community.proxmox.proxmox:
     node: "{{ proxmox_node }}"
     vmid: "{{ vmid }}"
+    # Required by the module for state: present, even on an update.
+    hostname: "{{ inventory_hostname }}"
     cores: "{{ cores }}"
     memory: "{{ memory }}"
     swap: "{{ swap }}"
