@@ -6,6 +6,6 @@ memory: 2048
 disk_gb: 32
 mac_temp: "BC:24:11:B3:A6:30"
 mac_production: "BC:24:11:0B:04:99"
-net_production: false
+net_production: true
 # Temporary DHCP address printed by provision.
 ansible_host: 192.168.1.229
