@@ -401,7 +401,7 @@ During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands i
    ssh ansible-controller run apply
    ```
 
-1. Remove the `IdentityFile ~/.ssh/homelab-temp` line from `Host ansible-controller` in `~/.ssh/config`.
+1. In `Host ansible-controller` in `~/.ssh/config`, remove the `IdentityFile ~/.ssh/homelab-temp` and `IdentityAgent none` lines and uncomment `IdentityFile ~/.ssh/emillassen.pub`.
 1. Delete the deploy key and the signing key on GitHub, then the files:
 
    ```sh

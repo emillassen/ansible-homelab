@@ -2,7 +2,7 @@
 
 Debian's `smokeping` with Apache, updated by unattended-upgrades. `General` and `Targets` come from this role; the RRD history in `/var/lib/smokeping` is not carried over, so graphs start empty.
 
-The package serves at `/smokeping/smokeping.cgi`, not `/`. The Caddy route redirects `/` there.
+The package serves at `/smokeping/smokeping.cgi`, not `/`. Apache on the guest redirects `/` there, so the Caddy route is a plain `reverse_proxy`.
 
 A syntax error in `Targets` stops the daemon. The handler runs `smokeping --check` before every restart and stops the play if it fails, leaving the running daemon on the old config. To check by hand:
 

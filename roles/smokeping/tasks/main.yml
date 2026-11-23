@@ -40,6 +40,23 @@
   notify: Restart apache2
   when: not ansible_check_mode or 'apache2' in ansible_facts.packages
 
+- name: Install the redirect from / to the CGI
+  ansible.builtin.copy:
+    src: smokeping-root.conf
+    dest: /etc/apache2/conf-available/smokeping-root.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart apache2
+  when: not ansible_check_mode or 'apache2' in ansible_facts.packages
+
+- name: Enable the redirect
+  ansible.builtin.command:
+    cmd: a2enconf smokeping-root
+    creates: /etc/apache2/conf-enabled/smokeping-root.conf
+  notify: Restart apache2
+  when: not ansible_check_mode or 'apache2' in ansible_facts.packages
+
 - name: Start Smokeping
   ansible.builtin.service:
     name: smokeping
