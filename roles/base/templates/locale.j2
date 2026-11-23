@@ -1,0 +1,5 @@
+# Managed by Ansible.
+LANG={{ locale_lang }}
+{% for var in base_lc_vars %}
+{{ var }}={{ locale_lc }}
+{% endfor %}

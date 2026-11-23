@@ -1,0 +1,15 @@
+---
+- name: Base
+  hosts: managed
+  roles:
+    - base
+
+- name: Firewall
+  hosts: managed:&lxc
+  roles:
+    - ufw
+
+- name: Controller
+  hosts: managed:&ansible-controller
+  roles:
+    - controller

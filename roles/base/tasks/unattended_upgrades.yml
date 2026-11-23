@@ -1,0 +1,12 @@
+---
+- name: Write 52unattended-upgrades-local
+  ansible.builtin.copy:
+    src: 52unattended-upgrades-local
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+    mode: "0644"
+
+- name: Turn on the daily apt run
+  ansible.builtin.copy:
+    src: 20auto-upgrades
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"

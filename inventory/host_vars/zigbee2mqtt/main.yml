@@ -1,0 +1,17 @@
+---
+vmid: 116
+legacy_host: zigbee2mqtt-old
+cores: 2
+memory: 2048
+disk_gb: 6
+mac_temp: "BC:24:11:BF:89:06"
+mac_production: "BC:24:11:7D:BD:B3"
+ip_production: 192.168.1.106
+ip_static: false
+startup: "order=2"
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.106
+ufw_allow:
+  - port: "8081"
+    proto: tcp

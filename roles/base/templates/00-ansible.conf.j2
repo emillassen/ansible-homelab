@@ -1,0 +1,5 @@
+# Managed by Ansible. sshd uses the first value it reads, so this file sorts first.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+AuthenticationMethods publickey
+PermitRootLogin {{ ssh_permit_root_login }}

@@ -1,0 +1,46 @@
+---
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Deny incoming by default
+  community.general.ufw:
+    direction: incoming
+    default: deny
+  when: not ansible_check_mode or 'ufw' in ansible_facts.packages
+
+- name: Allow outgoing by default
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+  when: not ansible_check_mode or 'ufw' in ansible_facts.packages
+
+- name: Set the routed default
+  community.general.ufw:
+    direction: routed
+    default: "{{ ufw_routed }}"
+  when: not ansible_check_mode or 'ufw' in ansible_facts.packages
+
+- name: Allow SSH from the admin sources
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+    to_port: "22"
+    proto: tcp
+  loop: "{{ ufw_ssh_sources }}"
+  when: not ansible_check_mode or 'ufw' in ansible_facts.packages
+
+- name: Allow the service ports
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item.from | default('any') }}"
+    to_port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  loop: "{{ ufw_allow }}"
+  when: not ansible_check_mode or 'ufw' in ansible_facts.packages
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled
+  when: not ansible_check_mode or 'ufw' in ansible_facts.packages

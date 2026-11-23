@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Forced command for the ansible user's SSH keys.
+# agent-shell human: sync, run check|apply|provision
+# agent-shell agent: sync, run check|apply
+set -Eeuo pipefail
+
+who="${1:-agent}"
+cmd="${SSH_ORIGINAL_COMMAND:-}"
+logger -t agent-shell -- "$who: $cmd"
+
+pattern='^[A-Za-z0-9_.,:&!-]+$'
+read -r -a args <<< "$cmd"
+
+refuse() {
+  echo "allowed: sync | run check|apply [--limit PATTERN]" >&2
+  [ "$who" != human ] || echo "         run provision [--check] --limit PATTERN" >&2
+  exit 64
+}
+
+[ "${#args[@]}" -gt 0 ] || refuse
+for a in "${args[@]}"; do
+  [[ "$a" =~ $pattern ]] || refuse
+done
+
+case "${args[0]}" in
+  sync)
+    [ "${#args[@]}" -eq 1 ] || refuse
+    exec /usr/local/sbin/ansible-sync
+    ;;
+  run)
+    [ "${#args[@]}" -ge 2 ] || refuse
+    case "${args[1]}" in
+      check | apply) ;;
+      provision) [ "$who" = human ] || refuse ;;
+      *) refuse ;;
+    esac
+    exec /usr/local/sbin/ansible-run "${args[@]:1}"
+    ;;
+  *) refuse ;;
+esac

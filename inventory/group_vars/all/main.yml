@@ -1,0 +1,32 @@
+---
+ansible_ssh_common_args: >-
+  -o UserKnownHostsFile={{ inventory_dir }}/../known_hosts
+  -o StrictHostKeyChecking=yes
+  -o HostKeyAlias={{ inventory_hostname }}
+
+emil_ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXHWIy7fzt9lviN1c9Yd7fuA7hCOYE7qc6RmmtojcBB emil@emillassen.com"
+# Printed by scripts/new-controller-keys.sh.
+controller_ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILN3J6Yob8INNpKUODlZxy5FSonPRb2FAa3rAChBC/zr ansible-controller"
+# Optional. Empty means no agent access from 207. Printed by the 207 block in README.md.
+hermes_ssh_key: ""
+# Only while rotating the controller key, see README.md.
+controller_ssh_key_previous: ""
+
+timezone: Europe/Copenhagen
+locale_lang: en_US.UTF-8
+locale_lc: da_DK.UTF-8
+
+ufw_ssh_sources:
+  - 192.168.1.103
+  - 192.168.1.42
+  - 192.168.1.102
+ufw_routed: deny
+ufw_allow: []
+
+proxmox_api_host: 192.168.1.100
+proxmox_api_user: ansible@pve
+proxmox_api_token_id: provision
+proxmox_api_token_secret: "{{ vault_proxmox_token_secret }}"
+proxmox_ca_path: "{{ inventory_dir }}/../files/pve-root-ca.pem"
+proxmox_node: pve
+proxmox_pool: ansible

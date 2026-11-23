@@ -1,0 +1,21 @@
+---
+vmid: 125
+legacy_host: esphome-old
+cores: 4
+memory: 4096
+disk_gb: 10
+mac_temp: "BC:24:11:A9:38:B1"
+mac_production: "BC:24:11:CD:64:F0"
+ip_production: 192.168.1.107
+ip_static: false
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.107
+ufw_allow:
+  - port: "6052"
+    proto: tcp
+  - port: "6055"
+    proto: tcp
+  - port: "5353"
+    proto: udp

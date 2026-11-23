@@ -1,0 +1,17 @@
+---
+vmid: 122
+legacy_host: homepage-old
+cores: 2
+memory: 4096
+disk_gb: 6
+mac_temp: "BC:24:11:EB:80:08"
+mac_production: "BC:24:11:88:88:6C"
+ip_production: 192.168.1.108
+ip_static: false
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.108
+ufw_allow:
+  - port: "3000"
+    proto: tcp

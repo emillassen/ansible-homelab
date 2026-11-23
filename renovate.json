@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "automerge": false,
+  "pip_requirements": {
+    "managerFilePatterns": ["/(^|/)requirements(-[a-z]+)?\\.txt$/"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pins in role defaults marked with a renovate comment",
+      "managerFilePatterns": ["/^roles/[^/]+/defaults/main\\.yml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\n\\S+: \"?(?<currentValue>[^\"\\n]+)\"?"
+      ]
+    }
+  ]
+}

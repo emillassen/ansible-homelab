@@ -1,0 +1,12 @@
+---
+- name: Packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Timezone and locale
+  ansible.builtin.import_tasks: time_locale.yml
+
+- name: SSH
+  ansible.builtin.import_tasks: ssh.yml
+
+- name: Unattended upgrades
+  ansible.builtin.import_tasks: unattended_upgrades.yml

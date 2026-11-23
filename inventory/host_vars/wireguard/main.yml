@@ -1,0 +1,19 @@
+---
+vmid: 118
+legacy_host: wireguard-old
+cores: 1
+memory: 512
+disk_gb: 8
+mac_temp: "BC:24:11:EB:BD:23"
+mac_production: "BC:24:11:BF:D9:1A"
+ip_production: 192.168.1.102
+ip_static: true
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.102
+ufw_allow:
+  - port: "51820"
+    proto: udp
+  - port: "10086"
+    proto: tcp

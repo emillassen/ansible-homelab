@@ -1,0 +1,4 @@
+---
+ansible_user: emil
+ansible_become: true
+ssh_permit_root_login: "no"

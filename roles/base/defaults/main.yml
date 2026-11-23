@@ -1,0 +1,13 @@
+---
+base_packages:
+  - ca-certificates
+  - locales
+  - openssh-server
+  - rsync
+  - unattended-upgrades
+base_lc_vars:
+  - LC_TIME
+  - LC_NUMERIC
+  - LC_MONETARY
+  - LC_PAPER
+  - LC_MEASUREMENT

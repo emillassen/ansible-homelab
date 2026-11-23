@@ -1,0 +1,27 @@
+---
+- name: Link /etc/localtime
+  ansible.builtin.file:
+    src: "/usr/share/zoneinfo/{{ timezone }}"
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: Write /etc/timezone
+  ansible.builtin.copy:
+    content: "{{ timezone }}\n"
+    dest: /etc/timezone
+    mode: "0644"
+
+- name: Generate locales
+  community.general.locale_gen:
+    name:
+      - "{{ locale_lang }}"
+      - "{{ locale_lc }}"
+    state: present
+  when: not ansible_check_mode or 'locales' in ansible_facts.packages
+
+- name: Write /etc/default/locale
+  ansible.builtin.template:
+    src: locale.j2
+    dest: /etc/default/locale
+    mode: "0644"

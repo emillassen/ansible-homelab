@@ -1,0 +1,4 @@
+---
+ufw_ssh_sources: []
+ufw_allow: []
+ufw_routed: deny

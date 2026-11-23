@@ -1,0 +1,17 @@
+---
+vmid: 123
+legacy_host: myspeed-old
+cores: 1
+memory: 1024
+disk_gb: 4
+mac_temp: "BC:24:11:3E:25:65"
+mac_production: "BC:24:11:A3:66:BE"
+ip_production: 192.168.1.110
+ip_static: false
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.110
+ufw_allow:
+  - port: "5216"
+    proto: tcp

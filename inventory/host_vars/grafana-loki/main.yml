@@ -1,0 +1,14 @@
+---
+vmid: 213
+legacy_host: grafana-loki-old
+cores: 4
+memory: 8192
+disk_gb: 32
+mac_temp: "BC:24:11:23:3F:46"
+mac_production: "BC:24:11:A4:56:80"
+ip_production: 192.168.1.118
+ip_static: false
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.118

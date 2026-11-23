@@ -1,0 +1,14 @@
+---
+vmid: 216
+legacy_host: meshmonitor-old
+cores: 4
+memory: 4096
+disk_gb: 32
+mac_temp: "BC:24:11:C3:4A:21"
+mac_production: "BC:24:11:5E:9F:AD"
+ip_production: 192.168.1.201
+ip_static: false
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.201

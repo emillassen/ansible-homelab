@@ -1,0 +1,19 @@
+---
+vmid: 120
+legacy_host: jellyfin-old
+cores: 8
+memory: 8192
+disk_gb: 32
+mac_temp: "BC:24:11:EA:92:52"
+mac_production: "BC:24:11:FD:57:69"
+ip_production: 192.168.1.115
+ip_static: false
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.115
+ufw_allow:
+  - port: "8096"
+    proto: tcp
+  - port: "7359"
+    proto: udp

@@ -1,0 +1,19 @@
+---
+vmid: 121
+legacy_host: bentopdf-old
+cores: 2
+memory: 4096
+disk_gb: 4
+mac_temp: "BC:24:11:D7:28:64"
+mac_production: "BC:24:11:8B:B1:B4"
+ip_production: 192.168.1.113
+ip_static: false
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.113
+ufw_allow:
+  - port: "8443"
+    proto: tcp
+  - port: "8080"
+    proto: tcp

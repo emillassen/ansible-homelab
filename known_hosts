@@ -1,0 +1,2 @@
+# Keyed by inventory hostname (HostKeyAlias), not by IP.
+ansible-controller ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN7/JqYY7GI01EM9kvQxQYfSD4TaQSfjeMlM2uRvVqoe

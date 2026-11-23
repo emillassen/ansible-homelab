@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Pull the repo and copy it to /opt/ansible. Runs as the ansible user on the controller.
+set -Eeuo pipefail
+
+if [ "$(id -u)" -eq 0 ]; then
+  exec runuser -u ansible -- "$0" "$@"
+fi
+
+home=/home/ansible
+# bootstrap-controller.sh holds the lock itself and sets ANSIBLE_LOCK_HELD.
+if [ -z "${ANSIBLE_LOCK_HELD:-}" ]; then
+  exec 9>/run/lock/ansible.lock
+  flock -n 9 || { echo "busy: another sync or run holds the lock" >&2; exit 75; }
+fi
+
+cd "$home/src"
+if [ "$(git rev-parse --abbrev-ref HEAD)" != main ]; then
+  echo "refusing: $home/src is not on main" >&2
+  exit 1
+fi
+if [ -n "$(git status --porcelain)" ]; then
+  echo "refusing: $home/src has local changes" >&2
+  exit 1
+fi
+
+git pull --ff-only
+rsync -a --delete --exclude .git "$home/src/" /opt/ansible/
+
+"$home/uv/bin/pip" install --quiet --disable-pip-version-check -r /opt/ansible/requirements-uv.txt
+"$home/uv/bin/uv" pip install --quiet --python "$home/venv" -r /opt/ansible/requirements.txt
+"$home/venv/bin/ansible-galaxy" collection install --upgrade -r /opt/ansible/requirements.yml -p "$home/collections"
+
+git log -1 --oneline

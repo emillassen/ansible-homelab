@@ -1,0 +1,3 @@
+---
+ansible_user: root
+ssh_permit_root_login: prohibit-password

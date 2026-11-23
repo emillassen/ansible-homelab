@@ -1,0 +1,14 @@
+---
+vmid: 113
+cores: 1
+memory: 1024
+disk_gb: 32
+# Fixed for life, so the UniFi reservation for 192.168.1.103 survives a rebuild.
+mac_production: "BC:24:11:A1:D7:58"
+ip_production: 192.168.1.103
+ansible_host: 192.168.1.103
+ufw_ssh_sources:
+  - 192.168.1.103
+  - 192.168.1.42
+  - 192.168.1.102
+  - 192.168.1.225

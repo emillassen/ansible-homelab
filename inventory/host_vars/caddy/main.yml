@@ -1,0 +1,21 @@
+---
+vmid: 119
+legacy_host: caddy-old
+cores: 2
+memory: 2048
+disk_gb: 8
+mac_temp: "BC:24:11:27:67:5D"
+mac_production: "BC:24:11:3F:F1:18"
+ip_production: 192.168.1.88
+ip_static: true
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.88
+ufw_allow:
+  - port: "80"
+    proto: tcp
+  - port: "443"
+    proto: tcp
+  - port: "443"
+    proto: udp

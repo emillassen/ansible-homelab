@@ -1,0 +1,14 @@
+---
+vmid: 214
+legacy_host: paperless-old
+cores: 4
+memory: 4096
+disk_gb: 32
+mac_temp: "BC:24:11:59:DB:03"
+mac_production: "BC:24:11:32:F1:0B"
+ip_production: 192.168.1.119
+ip_static: false
+startup: ""
+net_production: false
+# Set to the temporary DHCP address after provision, back to ip_production at cutover.
+ansible_host: 192.168.1.119
