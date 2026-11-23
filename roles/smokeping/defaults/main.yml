@@ -1,0 +1,5 @@
+---
+# Debian's package, updated by unattended-upgrades, so nothing is pinned here.
+smokeping_owner: Emil Lassen
+smokeping_contact: root@localhost
+smokeping_cgiurl: https://smokeping.hjem.sh/smokeping/smokeping.cgi

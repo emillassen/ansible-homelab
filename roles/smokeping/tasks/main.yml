@@ -1,0 +1,55 @@
+---
+- name: Install Smokeping and Apache
+  ansible.builtin.apt:
+    name:
+      - smokeping
+      - apache2
+    state: present
+
+- name: Write the General config
+  ansible.builtin.template:
+    src: General.j2
+    dest: /etc/smokeping/config.d/General
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart smokeping
+  when: not ansible_check_mode or 'smokeping' in ansible_facts.packages
+
+- name: Write the targets
+  ansible.builtin.template:
+    src: Targets.j2
+    dest: /etc/smokeping/config.d/Targets
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart smokeping
+  when: not ansible_check_mode or 'smokeping' in ansible_facts.packages
+
+- name: Enable CGI in Apache
+  community.general.apache2_module:
+    name: cgid
+    state: present
+  notify: Restart apache2
+  when: not ansible_check_mode or 'apache2' in ansible_facts.packages
+
+- name: Enable the Smokeping Apache config
+  ansible.builtin.command:
+    cmd: a2enconf smokeping
+    creates: /etc/apache2/conf-enabled/smokeping.conf
+  notify: Restart apache2
+  when: not ansible_check_mode or 'apache2' in ansible_facts.packages
+
+- name: Start Smokeping
+  ansible.builtin.service:
+    name: smokeping
+    state: started
+    enabled: true
+  when: not ansible_check_mode or 'smokeping' in ansible_facts.packages
+
+- name: Start Apache
+  ansible.builtin.service:
+    name: apache2
+    state: started
+    enabled: true
+  when: not ansible_check_mode or 'apache2' in ansible_facts.packages

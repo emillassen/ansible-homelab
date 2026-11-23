@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run check|apply [--limit PATTERN]
-# run provision [--check] --limit PATTERN
+# run provision|migrate [--check] --limit PATTERN
 set -Eeuo pipefail
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -9,7 +9,7 @@ fi
 
 usage() {
   echo "usage: run check|apply [--limit PATTERN]" >&2
-  echo "       run provision [--check] --limit PATTERN" >&2
+  echo "       run provision|migrate [--check] --limit PATTERN" >&2
   exit 64
 }
 
@@ -33,7 +33,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --check)
-      [ "$verb" = provision ] || usage
+      [ "$verb" = provision ] || [ "$verb" = migrate ] || usage
       check="--check"
       shift
       ;;
@@ -48,6 +48,11 @@ case "$verb" in
   provision)
     [ -n "$limit" ] || { echo "provision needs --limit" >&2; exit 64; }
     args=(playbooks/provision.yml)
+    [ -z "$check" ] || args+=(--check)
+    ;;
+  migrate)
+    [ -n "$limit" ] || { echo "migrate needs --limit <host>,<host>-old" >&2; exit 64; }
+    args=(playbooks/migrate.yml)
     [ -z "$check" ] || args+=(--check)
     ;;
   *) usage ;;

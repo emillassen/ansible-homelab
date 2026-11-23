@@ -1,0 +1,19 @@
+---
+# A syntax error in Targets stops the daemon, so check before restarting.
+# If the check fails, the play stops here and the old config keeps running.
+- name: Check the Smokeping config
+  ansible.builtin.command:
+    cmd: smokeping --check
+  changed_when: false
+  listen: Restart smokeping
+
+- name: Restart the Smokeping service
+  ansible.builtin.service:
+    name: smokeping
+    state: restarted
+  listen: Restart smokeping
+
+- name: Restart apache2
+  ansible.builtin.service:
+    name: apache2
+    state: restarted

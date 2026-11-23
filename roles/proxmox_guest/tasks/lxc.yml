@@ -94,4 +94,7 @@
 - name: Start the container
   community.proxmox.proxmox:
     vmid: "{{ vmid }}"
+    # Without it the module reads the name from cluster resources, which a
+    # just-created container doesn't have yet (KeyError: 'name').
+    hostname: "{{ inventory_hostname }}"
     state: started

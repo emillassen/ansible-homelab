@@ -13,6 +13,8 @@
 - name: Stop the container before changing its network
   community.proxmox.proxmox:
     vmid: "{{ vmid }}"
+    # See "Start the container" in lxc.yml.
+    hostname: "{{ inventory_hostname }}"
     state: stopped
     timeout: 120
   when: "'lxc' in group_names"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Forced command for the ansible user's SSH keys.
-# agent-shell human: sync, run check|apply|provision
+# agent-shell human: sync, run check|apply|provision|migrate
 # agent-shell agent: sync, run check|apply
 set -Eeuo pipefail
 
@@ -13,7 +13,7 @@ read -r -a args <<< "$cmd"
 
 refuse() {
   echo "allowed: sync | run check|apply [--limit PATTERN]" >&2
-  [ "$who" != human ] || echo "         run provision [--check] --limit PATTERN" >&2
+  [ "$who" != human ] || echo "         run provision|migrate [--check] --limit PATTERN" >&2
   exit 64
 }
 
@@ -31,7 +31,7 @@ case "${args[0]}" in
     [ "${#args[@]}" -ge 2 ] || refuse
     case "${args[1]}" in
       check | apply) ;;
-      provision) [ "$who" = human ] || refuse ;;
+      provision | migrate) [ "$who" = human ] || refuse ;;
       *) refuse ;;
     esac
     exec /usr/local/sbin/ansible-run "${args[@]:1}"

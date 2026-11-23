@@ -1,0 +1,9 @@
+# Managed by Ansible.
+*** General ***
+
+owner    = {{ smokeping_owner }}
+contact  = {{ smokeping_contact }}
+cgiurl   = {{ smokeping_cgiurl }}
+syslogfacility = local0
+
+@include /etc/smokeping/config.d/pathnames

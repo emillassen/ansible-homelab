@@ -1,0 +1,38 @@
+---
+# Copies a service's data from its old guest to the new one, through the controller.
+#   run migrate [--check] --limit <host>,<host>-old
+# The old guest lists its roles in `migrate_roles` (inventory/hosts.yml). Each role
+# has tasks/migrate_export.yml (stop the app, dump, pull to the controller) and
+# tasks/migrate_import.yml (push, restore, write a marker, delete the staging copy).
+- name: Export from the old guest
+  hosts: legacy
+  gather_facts: false
+  tasks:
+    - name: Check that the old guest has something to migrate
+      ansible.builtin.assert:
+        that: migrate_roles | default([]) | length > 0
+        fail_msg: "{{ inventory_hostname }} has no migrate_roles in inventory/hosts.yml"
+
+    - name: Export each role's data
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+        tasks_from: migrate_export
+      loop: "{{ migrate_roles }}"
+
+    - name: Mark the export done
+      ansible.builtin.set_fact:
+        migrate_exported: true
+
+- name: Import on the new guest
+  hosts: managed:!ansible-controller
+  tasks:
+    - name: Check that the old guest was exported in this run
+      ansible.builtin.assert:
+        that: hostvars[legacy_host].migrate_exported | default(false)
+        fail_msg: "Run with --limit {{ inventory_hostname }},{{ legacy_host | default('<host>-old') }}"
+
+    - name: Import each role's data
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+        tasks_from: migrate_import
+      loop: "{{ hostvars[legacy_host].migrate_roles }}"

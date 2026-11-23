@@ -24,3 +24,8 @@
   hosts: managed:&ansible-controller
   roles:
     - controller
+
+- name: Smokeping
+  hosts: managed:&smokeping
+  roles:
+    - smokeping

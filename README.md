@@ -16,7 +16,10 @@ ssh ansible-controller sync
 ssh ansible-controller run check --limit caddy
 ssh ansible-controller run apply --limit caddy
 ssh ansible-controller run provision --check --limit caddy
+ssh ansible-controller run migrate --check --limit mosquitto,mosquitto-old
 ```
+
+`provision` and `migrate` are yours only; the `207` key can't run them.
 
 ## Bootstrap
 
@@ -277,13 +280,45 @@ Install the Renovate app on the repo. It opens a dependency dashboard issue and 
 
 ## Rebuild a guest
 
-The full runbook arrives with Phase 2. In outline:
+Before each rebuild, the report lists the data to copy, how, and how it will be tested. Below, `<host>` is the new guest, `<old>` and `<new>` are the old and new IDs.
 
-1. `run provision --limit <host>` on the temporary MAC and DHCP address, then `run apply`. Zigbee2MQTT and anything on NFS stay stopped.
-1. Stop the app on the old guest and copy its data: files with the app stopped, databases by dump and restore.
-1. Stop both guests. Give the new one the old MAC and turn off the old one's `onboot`. Never boot both with the same MAC.
-1. Start the new guest (AdGuard, WireGuard and Caddy get their static IP first), check its IP, `run apply`, and test through the Caddy hostname.
-1. Rollback: stop the new guest, give it back its temporary MAC, start the old one.
+1. Provision on the temporary MAC and DHCP address, as in "Add a service". Zigbee2MQTT and anything on NFS stay stopped.
+1. Copy the data, if the service has any. The old guest lists its roles under `migrate_roles` in `inventory/hosts.yml`. The export stops the app on the old guest, so this is the start of the outage:
+
+   ```sh
+   ssh ansible-controller run migrate --check --limit <host>,<host>-old
+   ssh ansible-controller run migrate --limit <host>,<host>-old
+   ```
+
+1. Set `net_production: true` and `ansible_host` back to the production IP in `inventory/host_vars/<host>/main.yml`. Commit, push, and `ssh ansible-controller sync`.
+1. Stop the old guest and turn off its `onboot`. On the Proxmox host (use `qm` for a VM):
+
+   ```sh
+   pct shutdown <old> && pct set <old> --onboot 0
+   ```
+
+1. Swap the MAC (and set the static IP for AdGuard, WireGuard and Caddy). `provision` refuses while the old guest still answers on port 22:
+
+   ```sh
+   ssh ansible-controller run provision --limit <host>
+   ssh ansible-controller run apply --limit <host>
+   ssh ansible-controller run apply --limit <host>
+   ```
+
+   The second `apply` must show `changed=0`. Then test through the Caddy hostname with real data.
+
+1. Rollback, on the Proxmox host. `<mac_temp>` is in `inventory/host_vars/<host>/main.yml`. For a VM use `qm` and `--net0 virtio=<mac_temp>,bridge=vmbr0,firewall=1`:
+
+   ```sh
+   pct stop <new>
+   pct set <new> --net0 name=eth0,bridge=vmbr0,firewall=1,hwaddr=<mac_temp>,ip=dhcp
+   pct set <old> --onboot 1
+   pct start <old>
+   ```
+
+   Then revert the `host_vars` commit.
+
+A rebuild is done when it's accepted and has a backup (the nightly vzdump picks up new IDs). The old guest stays stopped until you delete it.
 
 ## Apply a Renovate PR
 
@@ -356,7 +391,7 @@ Re-run the `207` block in [Bootstrap](#hermes-207-the-agents-key-optional), upda
 
 1. The controller key is root on every LXC and passwordless-sudo `emil` on every VM. Whoever holds `113` holds the fleet. SSH to `113` is key-only, from `.103`, `.42`, `.102` and `.225`.
 1. The vault password sits in plain text in `/home/ansible/.vault-pass` (0600). It and the controller key reach Holocron in `113`'s nightly backup.
-1. The `207` key has no passphrase. It can run `sync`, `check` and `apply`, not `provision`. With `207`'s account-wide `gh` token, an agent could push to `main` and apply it; "I merge" is a process rule, not a technical one.
+1. The `207` key has no passphrase. It can run `sync`, `check` and `apply`, not `provision` or `migrate`. With `207`'s account-wide `gh` token, an agent could push to `main` and apply it; "I merge" is a process rule, not a technical one.
 1. New guests' host keys are trusted on first scan, over the LAN, right after creation.
 1. The token's `VM.Allocate` on the pool can delete pool guests. No task uses `state: absent`.
 1. VMs have no host firewall. SSH there is key-only but reachable from the whole LAN.
