@@ -14,6 +14,8 @@ usage() {
 }
 
 home=/home/ansible
+# Ansible needs a locale that exists; C.UTF-8 always does, even before base generates the rest.
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
 pattern='^[A-Za-z0-9_.,:&!-]+$'
 
 verb="${1:-}"
@@ -52,7 +54,7 @@ case "$verb" in
 esac
 [ -z "$limit" ] || args+=(--limit "$limit")
 
-exec 9>/run/lock/ansible.lock
+exec 9>/home/ansible/run.lock
 flock -n 9 || { echo "busy: another sync or run holds the lock" >&2; exit 75; }
 
 export ANSIBLE_CONFIG=/opt/ansible/ansible.cfg

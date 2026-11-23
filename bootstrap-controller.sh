@@ -4,6 +4,8 @@
 # Safe to re-run.
 set -Eeuo pipefail
 umask 027
+# Ansible needs a locale that exists; C.UTF-8 always does, even before base generates the rest.
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 repo_url="${1:-}"
 reset_vault_pass=""
@@ -22,8 +24,8 @@ install -d -o ansible -g ansible -m 0700 "$home/log" "$home/.ssh"
 install -d -o ansible -g ansible -m 0750 /opt/ansible
 
 echo "== lock"
-[ -e /run/lock/ansible.lock ] || install -m 0644 -o ansible -g ansible /dev/null /run/lock/ansible.lock
-exec 9>>/run/lock/ansible.lock
+[ -e /home/ansible/run.lock ] || install -m 0644 -o ansible -g ansible /dev/null /home/ansible/run.lock
+exec 9>>/home/ansible/run.lock
 flock -n 9 || { echo "busy: another sync or run holds the lock" >&2; exit 75; }
 
 echo "== packages"
