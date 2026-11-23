@@ -9,9 +9,9 @@ mac_production: "BC:24:11:98:1D:0A"
 ip_production: 192.168.1.105
 ip_static: false
 startup: "order=2"
-net_production: false
+net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
-ansible_host: 192.168.1.190
+ansible_host: 192.168.1.105
 ufw_allow:
   - port: "1883"
     proto: tcp
