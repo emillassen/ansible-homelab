@@ -9,6 +9,7 @@ fi
 home=/home/ansible
 # Ansible needs a locale that exists; C.UTF-8 always does, even before base generates the rest.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
+export UV_NO_CONFIG=1
 # bootstrap-controller.sh holds the lock itself and sets ANSIBLE_LOCK_HELD.
 if [ -z "${ANSIBLE_LOCK_HELD:-}" ]; then
   exec 9>/home/ansible/run.lock

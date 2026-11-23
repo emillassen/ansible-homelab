@@ -6,6 +6,8 @@ set -Eeuo pipefail
 umask 027
 # Ansible needs a locale that exists; C.UTF-8 always does, even before base generates the rest.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
+# Never read a uv.toml from wherever this happens to run.
+export UV_NO_CONFIG=1
 
 repo_url="${1:-}"
 reset_vault_pass=""
@@ -22,6 +24,8 @@ echo "== ansible user"
 id ansible >/dev/null 2>&1 || useradd --system --create-home --home-dir "$home" --shell /bin/bash ansible
 install -d -o ansible -g ansible -m 0700 "$home/log" "$home/.ssh"
 install -d -o ansible -g ansible -m 0750 /opt/ansible
+# Commands run as ansible from here on; it cannot read /root.
+cd "$home"
 
 echo "== lock"
 [ -e /home/ansible/run.lock ] || install -m 0644 -o ansible -g ansible /dev/null /home/ansible/run.lock
