@@ -6,6 +6,10 @@
   ansible.builtin.import_tasks: vm.yml
   when: "'vm' in group_names"
 
+- name: Unprivileged ping in containers
+  ansible.builtin.import_tasks: ping.yml
+  when: "'lxc' in group_names"
+
 - name: Timezone and locale
   ansible.builtin.import_tasks: time_locale.yml
 
