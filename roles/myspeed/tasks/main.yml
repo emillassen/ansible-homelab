@@ -45,7 +45,10 @@
   ansible.builtin.command:
     cmd: npm ci --omit=dev
     chdir: "{{ myspeed_dir }}"
-  when: not myspeed_marker.stat.exists
+  # Under --check the directory may not exist yet, and command would be skipped anyway.
+  when:
+    - not myspeed_marker.stat.exists
+    - not ansible_check_mode
   notify: Restart myspeed
 
 - name: Write the version marker
