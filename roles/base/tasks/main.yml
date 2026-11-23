@@ -2,6 +2,10 @@
 - name: Packages
   ansible.builtin.import_tasks: packages.yml
 
+- name: VM network and guest agent
+  ansible.builtin.import_tasks: vm.yml
+  when: "'vm' in group_names"
+
 - name: Timezone and locale
   ansible.builtin.import_tasks: time_locale.yml
 
@@ -10,3 +14,6 @@
 
 - name: Unattended upgrades
   ansible.builtin.import_tasks: unattended_upgrades.yml
+
+- name: First upgrade
+  ansible.builtin.import_tasks: first_upgrade.yml

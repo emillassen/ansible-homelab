@@ -30,3 +30,9 @@ proxmox_api_token_secret: "{{ vault_proxmox_token_secret }}"
 proxmox_ca_path: "{{ inventory_dir }}/../files/pve-root-ca.pem"
 proxmox_node: pve
 proxmox_pool: ansible
+
+# Guest defaults; host_vars override them.
+startup: ""
+swap: 512
+ip_static: false
+net_production: false

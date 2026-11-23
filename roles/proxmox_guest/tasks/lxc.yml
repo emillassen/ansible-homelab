@@ -1,0 +1,95 @@
+---
+- name: Make sure the Debian 13 template is on local
+  community.proxmox.proxmox_template:
+    node: "{{ proxmox_node }}"
+    storage: local
+    content_type: vztmpl
+    template: "{{ proxmox_guest_lxc_template }}"
+    state: present
+  when: not proxmox_guest_exists
+
+- name: Create the container
+  community.proxmox.proxmox:
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vmid }}"
+    hostname: "{{ inventory_hostname }}"
+    ostemplate: "local:vztmpl/{{ proxmox_guest_lxc_template }}"
+    disk: "{{ proxmox_guest_storage }}:{{ disk_gb }}"
+    cores: "{{ cores }}"
+    memory: "{{ memory }}"
+    swap: "{{ swap }}"
+    netif:
+      net0: "{{ proxmox_guest_lxc_net0 }}"
+    unprivileged: true
+    features:
+      - nesting=1
+    pool: "{{ proxmox_pool }}"
+    onboot: true
+    startup: "{{ startup | default(omit, true) }}"
+    pubkey: "{{ proxmox_guest_keys }}"
+    state: present
+    update: false
+  when: not proxmox_guest_exists
+
+# Each item reports changed when it differs, so --check shows the plan.
+- name: Compare the container config
+  ansible.builtin.debug:
+    msg: "{{ item.key }}: {{ item.actual }} -> {{ item.want }}"
+  loop:
+    - key: cores
+      actual: "{{ proxmox_guest_config.cores | default('') }}"
+      want: "{{ cores }}"
+    - key: memory
+      actual: "{{ proxmox_guest_config.memory | default('') }}"
+      want: "{{ memory }}"
+    - key: swap
+      actual: "{{ proxmox_guest_config.swap | default('') }}"
+      want: "{{ swap }}"
+    - key: onboot
+      actual: "{{ proxmox_guest_config.onboot | default(0) }}"
+      want: "1"
+    - key: startup
+      actual: "{{ proxmox_guest_config.startup | default('') }}"
+      want: "{{ startup }}"
+  loop_control:
+    label: "{{ item.key }}"
+  changed_when: (item.actual | string) != (item.want | string)
+  register: proxmox_guest_drift
+  when: proxmox_guest_exists
+
+- name: Compare the container network
+  ansible.builtin.debug:
+    msg: "net0: {{ proxmox_guest_config.net0 }} -> {{ proxmox_guest_lxc_net0 }}"
+  # Proxmox may reorder the keys, so compare MAC, address and gateway one at a time.
+  changed_when: >-
+    ('hwaddr=' ~ proxmox_guest_mac) not in proxmox_guest_config.net0
+    or ('ip=' ~ proxmox_guest_ip ~ ',') not in (proxmox_guest_config.net0 ~ ',')
+    or (proxmox_guest_gw ~ ',') not in (proxmox_guest_config.net0 ~ ',')
+  register: proxmox_guest_net_drift
+  when: proxmox_guest_exists
+
+- name: Network change
+  ansible.builtin.include_tasks: net_change.yml
+  when: proxmox_guest_exists and proxmox_guest_net_drift is changed
+
+- name: Update the container config
+  community.proxmox.proxmox:
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vmid }}"
+    cores: "{{ cores }}"
+    memory: "{{ memory }}"
+    swap: "{{ swap }}"
+    netif:
+      net0: "{{ proxmox_guest_lxc_net0 }}"
+    onboot: true
+    startup: "{{ startup | default(omit, true) }}"
+    # An emptied startup has to be deleted; leaving it out keeps the old value.
+    delete: "{{ ['startup'] if (startup == '' and proxmox_guest_config.startup is defined) else omit }}"
+    state: present
+    update: true
+  when: proxmox_guest_exists and (proxmox_guest_drift is changed or proxmox_guest_net_drift is changed)
+
+- name: Start the container
+  community.proxmox.proxmox:
+    vmid: "{{ vmid }}"
+    state: started

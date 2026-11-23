@@ -1,0 +1,44 @@
+---
+# A clone's netplan from cloud-init is bound to the clone's MAC, and a MAC change
+# makes cloud-init treat the VM as new (new host keys). This netplan matches any
+# NIC, and cloud-init stops after the first boot.
+- name: Install the guest agent
+  ansible.builtin.apt:
+    name: qemu-guest-agent
+    state: present
+
+- name: Run the guest agent
+  ansible.builtin.service:
+    name: qemu-guest-agent
+    state: started
+    enabled: true
+  when: not ansible_check_mode or 'qemu-guest-agent' in ansible_facts.packages
+
+- name: Write a netplan that matches any NIC
+  ansible.builtin.copy:
+    src: 60-ansible.yaml
+    dest: /etc/netplan/60-ansible.yaml
+    mode: "0600"
+  notify: Apply netplan
+
+- name: Remove cloud-init's netplan
+  ansible.builtin.file:
+    path: /etc/netplan/50-cloud-init.yaml
+    state: absent
+  notify: Apply netplan
+
+- name: Stop cloud-init writing the network
+  ansible.builtin.copy:
+    content: "network: {config: disabled}\n"
+    dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    mode: "0644"
+
+- name: Stop cloud-init
+  ansible.builtin.copy:
+    content: ""
+    dest: /etc/cloud/cloud-init.disabled
+    force: false
+    mode: "0644"
+
+- name: Apply the netplan now
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,8 @@
+---
+# The temporary MAC and DHCP until cutover, then the old guest's MAC (and static IP where set).
+proxmox_guest_mac: "{{ mac_production if net_production else mac_temp }}"
+proxmox_guest_ip: "{{ ip_production ~ '/24' if (net_production and ip_static) else 'dhcp' }}"
+proxmox_guest_gw: "{{ ',gw=' ~ proxmox_guest_gateway if (net_production and ip_static) else '' }}"
+proxmox_guest_lxc_net0: "name=eth0,bridge={{ proxmox_guest_bridge }},firewall=1,hwaddr={{ proxmox_guest_mac }},ip={{ proxmox_guest_ip }}{{ proxmox_guest_gw }}"
+proxmox_guest_vm_net0: "virtio={{ proxmox_guest_mac }},bridge={{ proxmox_guest_bridge }},firewall=1"
+proxmox_guest_keys: "{{ emil_ssh_key }}\n{{ controller_ssh_key }}"

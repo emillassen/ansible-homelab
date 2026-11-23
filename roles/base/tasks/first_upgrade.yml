@@ -1,0 +1,26 @@
+---
+# A fresh image is behind. Upgrade once, reboot onto it, then leave apt to
+# unattended-upgrades. The marker keeps later runs at changed=0.
+- name: Check for the first-upgrade marker
+  ansible.builtin.stat:
+    path: /var/lib/ansible-first-upgrade
+  register: base_first_upgrade
+
+- name: Upgrade everything once
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: true
+  register: base_upgrade
+  when: not base_first_upgrade.stat.exists
+
+- name: Reboot onto the upgrade
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+  when: base_upgrade is changed and not ansible_check_mode
+
+- name: Write the first-upgrade marker
+  ansible.builtin.copy:
+    content: ""
+    dest: /var/lib/ansible-first-upgrade
+    force: false
+    mode: "0644"

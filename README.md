@@ -22,6 +22,12 @@ ssh ansible-controller run provision --check --limit caddy
 
 Run these in order the first time. To rebuild `113` later, start at "Create `113`".
 
+Run the Proxmox host blocks over `ssh root@192.168.1.100`, not in the web UI's shell: restarting `pveproxy` cuts that shell off. The host and fresh LXCs don't know Ghostty's terminal type; run `export TERM=xterm-256color` first, or once from the laptop:
+
+```sh
+infocmp -x xterm-ghostty | ssh root@192.168.1.100 -- tic -x -
+```
+
 ### Laptop: tools and controller keys
 
 ```sh
@@ -63,18 +69,26 @@ pveum acl list | grep ansible
 
 The token secret is printed once. With `--privsep 0` the token has exactly the user's rights. The user has no password, so it can't log in. `113` is not in the pool, so the token can't touch its own controller.
 
-Then print the CA and check that the API certificate covers the IP (the SAN must list `IP Address:192.168.1.100`):
+Then check that the API certificate covers the host's IP. The SAN must list `IP Address:192.168.1.100`:
 
 ```sh
 openssl x509 -in /etc/pve/local/pve-ssl.pem -noout -ext subjectAltName
-cat /etc/pve/pve-root-ca.pem
+```
+
+If it lists an old address instead, and `hostname -I` and `grep pve /etc/hosts` both show `.100`, reissue the node certificate. The root CA stays the same:
+
+```sh
+pvecm updatecerts --force
+systemctl restart pveproxy
+openssl x509 -in /etc/pve/local/pve-ssl.pem -noout -ext subjectAltName
 ```
 
 ### Laptop: CA and vault
 
-Save the CA as `files/pve-root-ca.pem`, then create the vault and add the token secret:
+Copy the CA into the repo. It's public, so it isn't vaulted. Then create the vault with only the token secret in it:
 
 ```sh
+scp root@192.168.1.100:/etc/pve/pve-root-ca.pem files/pve-root-ca.pem
 .venv/bin/ansible-vault create inventory/group_vars/all/vault.yml
 ```
 
@@ -84,10 +98,11 @@ vault_proxmox_token_secret: "<secret>"
 
 ### Laptop: SSH to the controller
 
-Use the `known_hosts` line that `new-controller-keys.sh` printed, with `192.168.1.103` in place of `ansible-controller`. Your key is on the YubiKey, so `IdentityFile` names its public half and gpg-agent signs.
+The host key is the controller's, from `roles/controller/files/ssh_host_ed25519_key.pub`; it survives a rebuild, so this is done once. Your key is on the YubiKey, so `IdentityFile` names its public half and gpg-agent signs.
 
 ```sh
 cat >> ~/.ssh/config <<'EOF'
+
 Host ansible-controller
   HostName 192.168.1.103
   User ansible
@@ -95,14 +110,14 @@ Host ansible-controller
   IdentitiesOnly yes
   StrictHostKeyChecking yes
 EOF
-echo '192.168.1.103 ssh-ed25519 AAAA…' >> ~/.ssh/known_hosts
+echo '192.168.1.103 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN7/JqYY7GI01EM9kvQxQYfSD4TaQSfjeMlM2uRvVqoe' >> ~/.ssh/known_hosts
 ```
 
 Commit and push. The controller only gets code from GitHub.
 
 ### Hermes `207`: the agents' key (optional)
 
-Skip this until you want Hermes to run `sync`, `check` and `apply`. As `emil` on `207`, with the same `known_hosts` line:
+Skip this until you want Hermes to run `sync`, `check` and `apply`. As `emil` on `207`:
 
 ```sh
 ssh-keygen -t ed25519 -N '' -C hermes-207-ansible -f ~/.ssh/ansible-controller
@@ -115,7 +130,7 @@ Host ansible-controller
   IdentitiesOnly yes
   StrictHostKeyChecking yes
 EOF
-echo '192.168.1.103 ssh-ed25519 AAAA…' >> ~/.ssh/known_hosts
+echo '192.168.1.103 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN7/JqYY7GI01EM9kvQxQYfSD4TaQSfjeMlM2uRvVqoe' >> ~/.ssh/known_hosts
 ```
 
 Put the printed key in `hermes_ssh_key` in `inventory/group_vars/all/main.yml`, commit, push, then:
@@ -160,21 +175,31 @@ Skip this on a rebuild: the reservation is already there.
 
 ```sh
 pct enter 113
+export TERM=xterm-256color
 apt update && apt install -y git
+rm -rf /root/ansible
 git clone https://github.com/emillassen/ansible-homelab.git /root/ansible
 /root/ansible/bootstrap-controller.sh https://github.com/emillassen/ansible-homelab.git
 rm -rf /root/ansible
 exit
 ```
 
-It asks for the vault password, applies `site.yml` to itself, then runs `check` over SSH. The last recap must show `changed=0`.
+It upgrades the image, asks for the vault password, applies `site.yml` to itself, then runs `check` over SSH. The last recap must show `changed=0`. It is safe to re-run after a failure. Then reboot onto the upgraded packages and check from the laptop:
+
+```sh
+pct reboot 113
+```
+
+```sh
+ssh ansible-controller run check --limit ansible-controller
+```
 
 ### Proxmox host: controller access to the old guests
 
-Copying data needs the controller's key on every old guest, plus `rsync` and `python3`. Every `pct exec` and `qm guest exec` reads `/dev/null`; otherwise the first one swallows the rest of a paste. The host keys are read through `pct` and the guest agent, so they are trusted without a first-use scan. Add the printed lines to `known_hosts`.
+Copying data needs the controller's key on every old guest, plus `rsync` and `python3`. Every `pct exec` and `qm guest exec` reads `/dev/null`; otherwise the first one swallows the rest of a paste. The host keys are read through `pct` and the guest agent, so they are trusted without a first-use scan. Add the printed lines to `known_hosts`. `key` is `controller_ssh_key` from `inventory/group_vars/all/main.yml`; change it here after rotating that key.
 
 ```sh
-key='ssh-ed25519 AAAA… ansible-controller'
+key='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILN3J6Yob8INNpKUODlZxy5FSonPRb2FAa3rAChBC/zr ansible-controller'
 for id in 100 101 102 103 104 105 106 107 108 109 110 111 112; do
   pct exec $id -- bash -c "
     apt update && apt install -y openssh-server rsync python3
@@ -211,10 +236,13 @@ runuser -u ansible -- bash -c 'cd /opt/ansible && ANSIBLE_CONFIG=/opt/ansible/an
 
 ### `113`: check the token
 
-The secret is read without echo and passed to `curl` on stdin, so it stays out of history and the process list.
+The secret is read without echo and passed to `curl` on stdin, so it stays out of history and the process list. Paste the `read` line on its own, type the secret and press Enter, then paste the rest. Pasted together, `read` swallows the next line instead of waiting. If you don't have the secret to hand, `.venv/bin/ansible-vault view inventory/group_vars/all/vault.yml` on the laptop shows it.
 
 ```sh
 read -rs SECRET
+```
+
+```sh
 printf 'Authorization: PVEAPIToken=ansible@pve!provision=%s\n' "$SECRET" |
   curl -sS --cacert /opt/ansible/files/pve-root-ca.pem -H @- https://192.168.1.100:8006/api2/json/access/permissions
 unset SECRET
@@ -268,7 +296,7 @@ The full runbook arrives with Phase 2. In outline:
    ssh ansible-controller run apply --limit <host>
    ```
 
-A bump to `ansible-core`, `uv` or a collection takes effect at `sync`. Follow it with `run check` with no `--limit`.
+A bump to `ansible-core`, `uv` or a collection takes effect at `sync`. Follow it with `run check` with no `--limit`. A change to `scripts/` reaches `113` only at `run apply --limit ansible-controller`.
 
 ## Rotate secrets
 

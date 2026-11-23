@@ -1,0 +1,11 @@
+---
+# Phase 2 throwaway. mac_production stands in for an old guest's MAC to exercise the swap.
+vmid: 299
+cores: 2
+memory: 2048
+disk_gb: 32
+mac_temp: "BC:24:11:B3:A6:30"
+mac_production: "BC:24:11:0B:04:99"
+net_production: false
+# Placeholder until provision prints the temporary address.
+ansible_host: 192.168.1.199

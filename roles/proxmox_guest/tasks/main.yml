@@ -1,0 +1,37 @@
+---
+- name: Read the guest
+  community.proxmox.proxmox_vm_info:
+    vmid: "{{ vmid }}"
+    config: current
+  register: proxmox_guest_info
+
+- name: Note whether the guest exists
+  ansible.builtin.set_fact:
+    proxmox_guest_exists: "{{ proxmox_guest_info.proxmox_vms | length > 0 }}"
+    proxmox_guest_config: "{{ proxmox_guest_info.proxmox_vms[0].config | default({}) }}"
+
+- name: Refuse a VMID that holds a different guest
+  ansible.builtin.assert:
+    that:
+      - proxmox_guest_info.proxmox_vms[0].name == inventory_hostname
+    fail_msg: "VMID {{ vmid }} is {{ proxmox_guest_info.proxmox_vms[0].name }}, not {{ inventory_hostname }}"
+  when: proxmox_guest_exists
+
+- name: Report what would be created
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: VMID {{ vmid }} does not exist and would be created"
+  changed_when: true
+  when: not proxmox_guest_exists
+
+- name: Container
+  ansible.builtin.include_tasks: lxc.yml
+  when: "'lxc' in group_names"
+
+- name: VM
+  ansible.builtin.include_tasks: vm.yml
+  when: "'vm' in group_names"
+
+# --check can't start a guest or change its MAC, so there is nothing to discover.
+- name: Address and host key
+  ansible.builtin.include_tasks: discover.yml
+  when: not ansible_check_mode

@@ -1,0 +1,20 @@
+---
+# Creates or updates guests through the Proxmox API. Runs on the controller only.
+- name: Provision
+  hosts: "lxc:vm:!ansible-controller"
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    # VMs set ansible_become for SSH; here everything runs on the controller as ansible.
+    ansible_become: false
+  module_defaults:
+    group/community.proxmox.proxmox:
+      api_host: "{{ proxmox_api_host }}"
+      api_user: "{{ proxmox_api_user }}"
+      api_token_id: "{{ proxmox_api_token_id }}"
+      api_token_secret: "{{ proxmox_api_token_secret }}"
+      ca_path: "{{ proxmox_ca_path }}"
+      validate_certs: true
+  roles:
+    - proxmox_guest

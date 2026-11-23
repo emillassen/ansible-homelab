@@ -1,0 +1,10 @@
+# Managed by Ansible. Matches the NIC by name, not MAC, so a MAC change keeps the
+# network up. "e*" covers cloud-init's eth0 now and ens18 after a reboot.
+network:
+  version: 2
+  ethernets:
+    lan:
+      match:
+        name: "e*"
+      dhcp4: true
+      dhcp6: true

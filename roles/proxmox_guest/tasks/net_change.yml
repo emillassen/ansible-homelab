@@ -1,0 +1,25 @@
+---
+# Only runs when the MAC or address is about to change. Moving onto the
+# production MAC needs the old guest stopped first (README, "Rebuild a guest").
+# Every old guest runs SSH open to the controller, so a silent port 22 means it is off.
+- name: Check that the old guest is off
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[legacy_host].ansible_host }}"
+    port: 22
+    state: stopped
+    timeout: 10
+  when: net_production and legacy_host is defined
+
+- name: Stop the container before changing its network
+  community.proxmox.proxmox:
+    vmid: "{{ vmid }}"
+    state: stopped
+    timeout: 120
+  when: "'lxc' in group_names"
+
+- name: Stop the VM before changing its network
+  community.proxmox.proxmox_kvm:
+    vmid: "{{ vmid }}"
+    state: stopped
+    timeout: 300
+  when: "'vm' in group_names"

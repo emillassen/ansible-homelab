@@ -1,0 +1,98 @@
+---
+- name: Check the disk size
+  ansible.builtin.assert:
+    that:
+      - disk_gb | int == 32
+    fail_msg: "Clones of {{ proxmox_guest_vm_template_vmid }} have a 32 GB disk; disk_gb is {{ disk_gb }}."
+
+- name: Clone the VM from the template
+  community.proxmox.proxmox_kvm:
+    node: "{{ proxmox_node }}"
+    vmid: "{{ proxmox_guest_vm_template_vmid }}"
+    clone: "{{ proxmox_guest_vm_template_name }}"
+    newid: "{{ vmid }}"
+    name: "{{ inventory_hostname }}"
+    full: true
+    storage: "{{ proxmox_guest_storage }}"
+    pool: "{{ proxmox_pool }}"
+    timeout: 600
+  when: not proxmox_guest_exists
+
+# Each item reports changed when it differs, so --check shows the plan.
+- name: Compare the VM config
+  ansible.builtin.debug:
+    msg: "{{ item.key }}: {{ item.actual }} -> {{ item.want }}"
+  loop:
+    - key: cores
+      actual: "{{ proxmox_guest_config.cores | default('') }}"
+      want: "{{ cores }}"
+    - key: memory
+      actual: "{{ proxmox_guest_config.memory | default('') }}"
+      want: "{{ memory }}"
+    - key: balloon
+      actual: "{{ proxmox_guest_config.balloon | default('') }}"
+      want: "{{ memory }}"
+    - key: onboot
+      actual: "{{ proxmox_guest_config.onboot | default(0) }}"
+      want: "1"
+    - key: startup
+      actual: "{{ proxmox_guest_config.startup | default('') }}"
+      want: "{{ startup }}"
+  loop_control:
+    label: "{{ item.key }}"
+  changed_when: (item.actual | string) != (item.want | string)
+  register: proxmox_guest_drift
+  when: proxmox_guest_exists
+
+- name: Compare the VM network
+  ansible.builtin.debug:
+    msg: "net0: {{ proxmox_guest_config.net0 }} -> {{ proxmox_guest_vm_net0 }}"
+  changed_when: ('virtio=' ~ proxmox_guest_mac ~ ',') not in proxmox_guest_config.net0
+  register: proxmox_guest_net_drift
+  when: proxmox_guest_exists
+
+- name: Network change
+  ansible.builtin.include_tasks: net_change.yml
+  when: proxmox_guest_exists and proxmox_guest_net_drift is changed
+
+# proxmox_kvm reports changed on every update, so it only runs on a new clone or real drift.
+- name: Set the VM config
+  community.proxmox.proxmox_kvm:
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vmid }}"
+    cores: "{{ cores }}"
+    memory: "{{ memory }}"
+    balloon: "{{ memory }}"
+    onboot: true
+    startup: "{{ startup | default(omit, true) }}"
+    ciuser: emil
+    sshkeys: "{{ proxmox_guest_keys }}"
+    ipconfig:
+      ipconfig0: ip=dhcp
+    update: true
+  when: not proxmox_guest_exists or proxmox_guest_drift is changed
+
+# An emptied startup has to be deleted; leaving it out keeps the old value.
+# proxmox_kvm can't delete and update in one call.
+- name: Delete an emptied startup order
+  community.proxmox.proxmox_kvm:
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vmid }}"
+    delete: startup
+  when: proxmox_guest_exists and startup == '' and proxmox_guest_config.startup is defined
+
+# A clone gets a random MAC; the network is only rewritten with the VM stopped.
+- name: Set the VM network
+  community.proxmox.proxmox_kvm:
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vmid }}"
+    net:
+      net0: "{{ proxmox_guest_vm_net0 }}"
+    update: true
+    update_unsafe: true
+  when: not proxmox_guest_exists or proxmox_guest_net_drift is changed
+
+- name: Start the VM
+  community.proxmox.proxmox_kvm:
+    vmid: "{{ vmid }}"
+    state: started

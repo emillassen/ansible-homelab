@@ -1,0 +1,7 @@
+---
+proxmox_guest_storage: local-zfs
+proxmox_guest_bridge: vmbr0
+proxmox_guest_gateway: 192.168.1.1
+proxmox_guest_lxc_template: debian-13-standard_13.6-1_amd64.tar.zst
+proxmox_guest_vm_template_vmid: 903
+proxmox_guest_vm_template_name: ubuntu-2604-template
