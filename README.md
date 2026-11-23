@@ -67,7 +67,7 @@ pveum user token add ansible@pve provision --privsep 0 --comment "controller 113
 pveum acl list | grep ansible
 ```
 
-The token secret is printed once. With `--privsep 0` the token has exactly the user's rights. The user has no password, so it can't log in. `113` is not in the pool, so the token can't touch its own controller.
+The token secret is printed once. Destroying and recreating `903` deletes its ACL; re-run the `/vms/903` line afterwards. With `--privsep 0` the token has exactly the user's rights. The user has no password, so it can't log in. `113` is not in the pool, so the token can't touch its own controller.
 
 Then check that the API certificate covers the host's IP. The SAN must list `IP Address:192.168.1.100`:
 
