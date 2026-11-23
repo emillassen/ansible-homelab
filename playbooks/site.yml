@@ -1,6 +1,15 @@
 ---
 - name: Base
   hosts: managed
+  gather_facts: false
+  pre_tasks:
+    # A fresh guest opens port 22 before logins are allowed (pam_nologin).
+    - name: Wait until the guest accepts a login
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Gather facts
+      ansible.builtin.setup:
   roles:
     - base
 

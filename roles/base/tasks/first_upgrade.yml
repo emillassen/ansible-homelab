@@ -13,10 +13,13 @@
   register: base_upgrade
   when: not base_first_upgrade.stat.exists
 
-- name: Reboot onto the upgrade
+# One reboot covers the upgrade and, on VMs, the new netplan.
+- name: Reboot onto the upgrade and the new network config
   ansible.builtin.reboot:
     reboot_timeout: 600
-  when: base_upgrade is changed and not ansible_check_mode
+  when: >-
+    not ansible_check_mode and
+    (base_upgrade is changed or base_netplan is changed or base_netplan_old is changed)
 
 - name: Write the first-upgrade marker
   ansible.builtin.copy:
