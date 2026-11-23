@@ -44,3 +44,8 @@
   hosts: managed:&uptime-kuma
   roles:
     - uptime_kuma
+
+- name: BentoPDF
+  hosts: managed:&bentopdf
+  roles:
+    - bentopdf

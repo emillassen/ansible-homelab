@@ -1,0 +1,8 @@
+---
+# Debian's unit runs `nginx -t` before it reloads, so a bad site fails here and the
+# running config stays.
+- name: Reload nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded
+  when: not ansible_check_mode

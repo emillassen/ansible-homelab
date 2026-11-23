@@ -1,8 +1,8 @@
 ---
 vmid: 121
 legacy_host: bentopdf-old
-cores: 2
-memory: 4096
+cores: 1
+memory: 512
 disk_gb: 4
 mac_temp: "BC:24:11:D7:28:64"
 mac_production: "BC:24:11:8B:B1:B4"

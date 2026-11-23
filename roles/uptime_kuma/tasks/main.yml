@@ -59,6 +59,13 @@
     - uptime_kuma_install
     - uptime_kuma_unit.stat.exists
 
+# Cleared before the tree is touched, so a failed upgrade is never taken for the old version.
+- name: Clear the version marker
+  ansible.builtin.file:
+    path: "{{ uptime_kuma_dir }}/.version"
+    state: absent
+  when: uptime_kuma_install
+
 - name: Unpack the Uptime Kuma {{ uptime_kuma_version }} source
   ansible.builtin.unarchive:
     src: https://github.com/louislam/uptime-kuma/archive/refs/tags/{{ uptime_kuma_version }}.tar.gz

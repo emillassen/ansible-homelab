@@ -1,0 +1,62 @@
+# Managed by Ansible. From the community-scripts BentoPDF install.
+server {
+    listen 8080;
+    server_name _;
+    return 301 https://$host:8443$request_uri;
+}
+
+server {
+    listen 8443 ssl;
+    server_name _;
+    ssl_certificate {{ bentopdf_cert }};
+    ssl_certificate_key {{ bentopdf_key }};
+    root {{ bentopdf_root }};
+    index index.html;
+
+    # Required for LibreOffice WASM (Word/Excel/PowerPoint to PDF via SharedArrayBuffer)
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Embedder-Policy "require-corp" always;
+    add_header Cross-Origin-Resource-Policy "cross-origin" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    gzip_static on;
+
+    location ~* /libreoffice-wasm/soffice\.wasm\.gz$ {
+        gzip off;
+        types {} default_type application/wasm;
+        add_header Content-Encoding gzip;
+        add_header Vary "Accept-Encoding";
+        add_header Cache-Control "public, immutable";
+    }
+
+    location ~* /libreoffice-wasm/soffice\.data\.gz$ {
+        gzip off;
+        types {} default_type application/octet-stream;
+        add_header Content-Encoding gzip;
+        add_header Vary "Accept-Encoding";
+        add_header Cache-Control "public, immutable";
+    }
+
+    location ~* \.wasm$ {
+        types {} default_type application/wasm;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # The old guest added mjs to /etc/nginx/mime.types; this keeps the package file stock.
+    location ~* \.mjs$ {
+        types {} default_type application/javascript;
+    }
+
+    location ~* \.(wasm\.gz|data\.gz|data)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        try_files $uri $uri/ $uri.html =404;
+    }
+
+    error_page 404 /404.html;
+}

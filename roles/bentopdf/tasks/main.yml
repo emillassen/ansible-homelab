@@ -1,0 +1,116 @@
+---
+- name: Install nginx
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - openssl
+      - unzip
+    state: present
+
+- name: Create the app directory
+  ansible.builtin.file:
+    path: "{{ bentopdf_root | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The marker holds the installed version and is written last, so a Renovate bump, a
+# revert or a failed unpack installs again on the next run.
+- name: Read the installed version
+  ansible.builtin.slurp:
+    src: "{{ bentopdf_root | dirname }}/.version"
+  register: bentopdf_marker
+  failed_when: false
+
+- name: Decide whether to install
+  ansible.builtin.set_fact:
+    bentopdf_install: "{{ (bentopdf_marker.content | default('') | b64decode | trim) != bentopdf_version }}"
+
+# Cleared before the tree is touched, so a failed upgrade is never taken for the old version.
+- name: Clear the version marker
+  ansible.builtin.file:
+    path: "{{ bentopdf_root | dirname }}/.version"
+    state: absent
+  when: bentopdf_install
+
+# The prebuilt simple-mode site; the old guest built the same thing with SIMPLE_MODE=true.
+- name: Remove the old site
+  ansible.builtin.file:
+    path: "{{ bentopdf_root }}"
+    state: absent
+  when: bentopdf_install
+
+- name: Create the site directory
+  ansible.builtin.file:
+    path: "{{ bentopdf_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Unpack BentoPDF {{ bentopdf_version }}
+  ansible.builtin.unarchive:
+    src: https://github.com/alam00000/bentopdf/releases/download/v{{ bentopdf_version }}/dist-simple-{{ bentopdf_version }}.zip
+    dest: "{{ bentopdf_root }}"
+    remote_src: true
+    owner: root
+    group: root
+  when:
+    - bentopdf_install
+    - not ansible_check_mode
+
+- name: Write the version marker
+  ansible.builtin.copy:
+    content: "{{ bentopdf_version }}\n"
+    dest: "{{ bentopdf_root | dirname }}/.version"
+    mode: "0644"
+  when: bentopdf_install
+
+# Caddy proxies to https://<ip>:8443 with tls_insecure_skip_verify, as on the old guest.
+- name: Make the self-signed certificate
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -nodes -newkey rsa:2048 -days 3650
+      -keyout {{ bentopdf_key }} -out {{ bentopdf_cert }}
+      -subj /CN={{ ip_production }}
+    creates: "{{ bentopdf_cert }}"
+  notify: Reload nginx
+
+- name: Protect the private key
+  ansible.builtin.file:
+    path: "{{ bentopdf_key }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: not ansible_check_mode
+
+- name: Remove the default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Write the site
+  ansible.builtin.template:
+    src: bentopdf.conf.j2
+    dest: /etc/nginx/sites-available/bentopdf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable the site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/bentopdf
+    dest: /etc/nginx/sites-enabled/bentopdf
+    state: link
+    force: true
+  notify: Reload nginx
+
+- name: Start nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: started
+    enabled: true
+  when: not ansible_check_mode or 'nginx' in ansible_facts.packages
