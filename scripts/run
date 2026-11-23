@@ -64,4 +64,18 @@ export ANSIBLE_LOG_PATH="$home/log/ansible.log"
 
 cd /opt/ansible
 echo "commit: $(git -C "$home/src" log -1 --oneline)"
-"$home/venv/bin/ansible-playbook" "${args[@]}"
+
+# Stop the play if whoever started it goes away (Ctrl-C on an SSH session leaves
+# no terminal to send a hangup, so the play would run on holding the lock).
+parent=$PPID
+"$home/venv/bin/ansible-playbook" "${args[@]}" &
+play=$!
+while kill -0 "$play" 2>/dev/null; do
+  # /proc, not kill -0: the caller is often sshd, which runs as root.
+  if [ ! -d "/proc/$parent" ]; then
+    echo "caller gone, stopping the play" >&2
+    kill -TERM "$play"
+  fi
+  sleep 2
+done
+wait "$play"
