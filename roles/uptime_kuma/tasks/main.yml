@@ -7,6 +7,15 @@
       - iputils-ping
     state: present
 
+# Ping monitors run as uptime-kuma. Debian's ping needs an ICMP socket, and this
+# container leaves ping_group_range at 65534 65534; open it as upstream systemd does.
+- name: Allow unprivileged ping
+  ansible.posix.sysctl:
+    name: net.ipv4.ping_group_range
+    value: "0 2147483647"
+    sysctl_file: /etc/sysctl.d/60-ping-group.conf
+    sysctl_set: true
+
 - name: Create the uptime-kuma user
   ansible.builtin.user:
     name: uptime-kuma
