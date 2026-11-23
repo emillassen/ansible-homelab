@@ -55,23 +55,12 @@
     group: ansible
     mode: "0644"
 
-- name: Allow you through the forced command
+- name: Allow you and any 207 agents, each through the forced command
   ansible.posix.authorized_key:
     user: ansible
-    key: restrict,command="/usr/local/sbin/agent-shell human" {{ emil_ssh_key }}
+    key: "{{ lookup('ansible.builtin.template', 'authorized_keys.j2') }}"
     exclusive: true
     state: present
-  when: hermes_ssh_key == ""
-
-- name: Allow you and the 207 agents, each through the forced command
-  ansible.posix.authorized_key:
-    user: ansible
-    key: |-
-      restrict,command="/usr/local/sbin/agent-shell human" {{ emil_ssh_key }}
-      restrict,from="192.168.1.225",command="/usr/local/sbin/agent-shell agent" {{ hermes_ssh_key }}
-    exclusive: true
-    state: present
-  when: hermes_ssh_key != ""
 
 - name: Install the controller host key
   ansible.builtin.copy:

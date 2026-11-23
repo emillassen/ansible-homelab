@@ -5,6 +5,9 @@ ansible_ssh_common_args: >-
   -o HostKeyAlias={{ inventory_hostname }}
 
 emil_ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXHWIy7fzt9lviN1c9Yd7fuA7hCOYE7qc6RmmtojcBB emil@emillassen.com"
+# Temporary laptop key (no passphrase) so the rebuild doesn't need a YubiKey touch for
+# every SSH login and commit. Remove it once everything is rebuilt: README.md, "Temporary laptop key".
+emil_ssh_key_temp: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOUMl3iUK0kDvdqxcSV88jpzpHfvALroKDsa4Rxjobb homelab-temp-laptop"
 # Printed by scripts/new-controller-keys.sh.
 controller_ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILN3J6Yob8INNpKUODlZxy5FSonPRb2FAa3rAChBC/zr ansible-controller"
 # Optional. Empty means no agent access from 207. Printed by the 207 block in README.md.

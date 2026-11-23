@@ -10,7 +10,7 @@
 - name: Allow exactly your key and the controller's for the login user
   ansible.posix.authorized_key:
     user: "{{ ansible_user }}"
-    key: "{{ emil_ssh_key }}\n{{ controller_ssh_key }}"
+    key: "{{ emil_ssh_key }}\n{{ emil_ssh_key_temp }}\n{{ controller_ssh_key }}"
     exclusive: true
     state: present
   when: controller_ssh_key_previous == ""
@@ -19,7 +19,7 @@
 - name: Allow your key and both controller keys for the login user
   ansible.posix.authorized_key:
     user: "{{ ansible_user }}"
-    key: "{{ emil_ssh_key }}\n{{ controller_ssh_key }}\n{{ controller_ssh_key_previous }}"
+    key: "{{ emil_ssh_key }}\n{{ emil_ssh_key_temp }}\n{{ controller_ssh_key }}\n{{ controller_ssh_key_previous }}"
     exclusive: true
     state: present
   when: controller_ssh_key_previous != ""

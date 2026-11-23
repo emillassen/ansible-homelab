@@ -1,0 +1,6 @@
+{% for key in [emil_ssh_key, emil_ssh_key_temp] if key != "" %}
+restrict,command="/usr/local/sbin/agent-shell human" {{ key }}
+{% endfor %}
+{% if hermes_ssh_key != "" %}
+restrict,from="192.168.1.225",command="/usr/local/sbin/agent-shell agent" {{ hermes_ssh_key }}
+{% endif %}

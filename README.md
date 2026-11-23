@@ -387,6 +387,31 @@ This replaces the controller's client key. Its host key stays, so `known_hosts` 
 
 Re-run the `207` block in [Bootstrap](#hermes-207-the-agents-key-optional), update `hermes_ssh_key`, commit, push, then `sync` and `run apply --limit ansible-controller`.
 
+## Temporary laptop key
+
+During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands in for the YubiKey: it is `emil_ssh_key_temp` (controller and every guest), a write deploy key on this repo, and the repo's commit-signing key. Remove it once everything is rebuilt:
+
+1. Set `emil_ssh_key_temp: ""` in `inventory/group_vars/all/main.yml`, commit and push with the YubiKey, then:
+
+   ```sh
+   git config --unset core.sshCommand
+   git config --unset gpg.format
+   git config --unset user.signingkey
+   ssh ansible-controller sync
+   ssh ansible-controller run apply
+   ```
+
+1. Remove the `IdentityFile ~/.ssh/homelab-temp` line from `Host ansible-controller` in `~/.ssh/config`.
+1. Delete the deploy key and the signing key on GitHub, then the files:
+
+   ```sh
+   gh repo deploy-key list
+   gh repo deploy-key delete <id>
+   gh ssh-key list
+   gh ssh-key delete <id>
+   rm ~/.ssh/homelab-temp ~/.ssh/homelab-temp.pub
+   ```
+
 ## Accepted risks
 
 1. The controller key is root on every LXC and passwordless-sudo `emil` on every VM. Whoever holds `113` holds the fleet. SSH to `113` is key-only, from `.103`, `.42`, `.102` and `.225`.
@@ -397,6 +422,7 @@ Re-run the `207` block in [Bootstrap](#hermes-207-the-agents-key-optional), upda
 1. VMs have no host firewall. SSH there is key-only but reachable from the whole LAN.
 1. unattended-upgrades takes every origin, so third-party apt repos are not pinned. Guests reboot at 02:00 when needed.
 1. The old community-scripts LXCs get no patches between removing the host cron and their rebuild.
+1. Until it is removed, the temporary laptop key has no passphrase. Whoever copies it gets root on every guest, `run` on the controller (including `provision` and `migrate`), push to this repo and commits that show as verified.
 1. Nextcloud AIO updates itself daily, as upstream recommends.
 1. The repo is public: IPs, MACs and public keys are visible, and the vault files can be attacked offline. The vault password must be long and random.
 1. Python packages are pinned by version, not hash. Galaxy collections are not signature-checked.
