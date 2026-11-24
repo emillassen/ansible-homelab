@@ -7,10 +7,18 @@
     validate: /usr/sbin/sshd -t -f %s
   notify: Restart ssh
 
+# The work laptop's key, on VMs only and only through WireGuard (its traffic
+# arrives masqueraded as the WireGuard guest). README.md, "Temporary laptop key".
+- name: Note the work laptop key for this guest
+  ansible.builtin.set_fact:
+    base_work_key: >-
+      {{ ('\nfrom="' ~ wireguard_lan_ip ~ '" ' ~ emil_ssh_key_work)
+         if ('vm' in group_names and emil_ssh_key_work | default('') != '') else '' }}
+
 - name: Allow exactly your key and the controller's for the login user
   ansible.posix.authorized_key:
     user: "{{ ansible_user }}"
-    key: "{{ emil_ssh_key }}\n{{ emil_ssh_key_temp }}\n{{ controller_ssh_key }}"
+    key: "{{ emil_ssh_key }}\n{{ emil_ssh_key_temp }}\n{{ controller_ssh_key }}{{ base_work_key }}"
     exclusive: true
     state: present
   when: controller_ssh_key_previous == ""
@@ -19,7 +27,7 @@
 - name: Allow your key and both controller keys for the login user
   ansible.posix.authorized_key:
     user: "{{ ansible_user }}"
-    key: "{{ emil_ssh_key }}\n{{ emil_ssh_key_temp }}\n{{ controller_ssh_key }}\n{{ controller_ssh_key_previous }}"
+    key: "{{ emil_ssh_key }}\n{{ emil_ssh_key_temp }}\n{{ controller_ssh_key }}\n{{ controller_ssh_key_previous }}{{ base_work_key }}"
     exclusive: true
     state: present
   when: controller_ssh_key_previous != ""

@@ -389,7 +389,7 @@ Re-run the `207` block in [Bootstrap](#hermes-207-the-agents-key-optional), upda
 
 ## Temporary laptop key
 
-During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands in for the YubiKey: it is `emil_ssh_key_temp` (controller and every guest), and a write deploy key on this repo. A second one, `~/.ssh/homelab-temp-signing`, signs the repo's commits (GitHub won't take a deploy key as a signing key). A third, `emil_ssh_key_work`, lets the work laptop (`C:\Users\<you>\.ssh\homelab-work`) run commands on the controller only, and only from `wireguard_lan_ip`, where WireGuard traffic reaches the LAN. Remove them once everything is rebuilt:
+During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands in for the YubiKey: it is `emil_ssh_key_temp` (controller and every guest), and a write deploy key on this repo. A second one, `~/.ssh/homelab-temp-signing`, signs the repo's commits (GitHub won't take a deploy key as a signing key). A third, `emil_ssh_key_work`, lets the work laptop (`C:\Users\<you>\.ssh\homelab-work`) run commands on the controller and log in to the VMs as `emil`, only from `wireguard_lan_ip`, where WireGuard traffic reaches the LAN. The old VMs got it by hand (paste below); they go away with their rebuilds. Remove them once everything is rebuilt:
 
 1. Set `emil_ssh_key_temp: ""` and `emil_ssh_key_work: ""` in `inventory/group_vars/all/main.yml`, commit and push with the YubiKey, then:
 
