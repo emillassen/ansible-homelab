@@ -2,7 +2,8 @@
 # A bad Caddyfile stops the play here and leaves the running Caddy on the old one.
 - name: Restart caddy
   ansible.builtin.command:
-    cmd: "{{ caddy_bin }} validate --config /etc/caddy/Caddyfile"
+    # As caddy: validate opens the access log, and a root-owned one stops Caddy starting.
+    cmd: runuser -u caddy -- {{ caddy_bin }} validate --config /etc/caddy/Caddyfile
   environment:
     CLOUDFLARE_API_TOKEN: "{{ caddy_cloudflare_api_token }}"
   # Changed, so it notifies the restart below.
