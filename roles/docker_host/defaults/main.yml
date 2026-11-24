@@ -1,0 +1,9 @@
+---
+# The Loki driver is a Docker plugin, pinned by tag. Changing it upgrades the plugin
+# and restarts Docker.
+# renovate: datasource=docker depName=grafana/loki-docker-driver
+docker_loki_driver_version: "3.7.10-amd64"
+docker_loki_url: https://loki.hjem.sh/loki/api/v1/push
+# false: json-file instead (the Loki VM itself, so it doesn't log to itself through
+# Caddy; hosts whose containers set their own driver).
+docker_loki_default: true

@@ -1,0 +1,27 @@
+---
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ changedetection_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ changedetection_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: changedetection_compose
+
+# The watches live in the changedetection-data volume. No data is copied: the watch
+# list comes back through the web UI's Settings → Backup / Restore.
+- name: Run Change Detection
+  community.docker.docker_compose_v2:
+    project_src: "{{ changedetection_project }}"
+    pull: missing
+    state: present
+  # Under --check the compose file may not be written yet.
+  when: not ansible_check_mode or (docker_present and changedetection_compose is not changed)

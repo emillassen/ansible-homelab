@@ -1,0 +1,22 @@
+{
+{% if docker_loki_default %}
+  "log-driver": "loki",
+  "log-opts": {
+    "loki-url": "{{ docker_loki_url }}",
+    "loki-batch-size": "400",
+    "loki-retries": "2",
+    "loki-max-backoff": "800ms",
+    "loki-timeout": "1s",
+    "mode": "non-blocking",
+    "keep-file": "true",
+    "max-size": "10m",
+    "max-file": "3"
+  }
+{% else %}
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+{% endif %}
+}

@@ -1,0 +1,8 @@
+---
+# renovate: datasource=docker depName=ghcr.io/dgtlmoon/changedetection.io
+changedetection_version: "0.70.4"
+# The headless Chrome for watches set to the browser (html_webdriver).
+# renovate: datasource=docker depName=dgtlmoon/sockpuppetbrowser
+changedetection_browser_version: "0.0.5"
+changedetection_project: /home/emil/changedetection
+changedetection_base_url: https://changedetection.hjem.sh

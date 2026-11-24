@@ -12,3 +12,5 @@ startup: ""
 net_production: false
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
 ansible_host: 192.168.1.118
+# Logs locally (json-file), so Loki never logs to itself through Caddy.
+docker_loki_default: false

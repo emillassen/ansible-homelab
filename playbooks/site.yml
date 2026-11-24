@@ -20,6 +20,11 @@
   roles:
     - ufw
 
+- name: Docker
+  hosts: managed:&docker
+  roles:
+    - docker_host
+
 - name: Controller
   hosts: managed:&ansible-controller
   roles:
@@ -86,3 +91,8 @@
   hosts: managed:&adguard
   roles:
     - adguard
+
+- name: Change Detection
+  hosts: managed:&changedetection
+  roles:
+    - changedetection

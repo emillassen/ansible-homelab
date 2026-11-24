@@ -3,7 +3,7 @@ vmid: 209
 legacy_host: changedetection-old
 cores: 4
 memory: 4096
-disk_gb: 16 # a clone of 903 is 32 GB and cannot shrink; open question
+disk_gb: 32
 mac_temp: "BC:24:11:73:02:02"
 mac_production: "BC:24:11:95:AE:C5"
 ip_production: 192.168.1.112

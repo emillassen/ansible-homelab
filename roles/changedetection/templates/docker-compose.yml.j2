@@ -1,0 +1,35 @@
+# Managed by Ansible (roles/changedetection).
+services:
+  changedetection:
+    container_name: changedetection
+    hostname: changedetection
+    image: ghcr.io/dgtlmoon/changedetection.io:{{ changedetection_version }}
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:5000:5000"
+    volumes:
+      - changedetection-data:/datastore
+    environment:
+      - PLAYWRIGHT_DRIVER_URL=ws://browser-sockpuppet-chrome:3000
+      - BASE_URL={{ changedetection_base_url }}
+      - USE_X_SETTINGS=1
+      - TZ=Europe/Copenhagen
+    depends_on:
+      browser-sockpuppet-chrome:
+        condition: service_started
+
+  browser-sockpuppet-chrome:
+    container_name: browser-sockpuppet-chrome
+    hostname: browser-sockpuppet-chrome
+    image: dgtlmoon/sockpuppetbrowser:{{ changedetection_browser_version }}
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      - SCREEN_WIDTH=1920
+      - SCREEN_HEIGHT=1024
+      - SCREEN_DEPTH=16
+      - MAX_CONCURRENT_CHROME_PROCESSES=10
+
+volumes:
+  changedetection-data:

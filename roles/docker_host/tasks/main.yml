@@ -1,0 +1,124 @@
+---
+# The key is in the repo, so a rebuild doesn't trust whatever the server serves that day.
+# Fingerprint 9DC858229FC7DD38854AE2D88D81803C0EBFCD88.
+- name: Install the Docker signing key
+  ansible.builtin.copy:
+    src: docker-repo.gpg
+    dest: /etc/apt/keyrings/docker.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Docker repo
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: deb
+    uris: https://download.docker.com/linux/ubuntu
+    suites: "{{ ansible_facts.distribution_release }}"
+    components: stable
+    architectures: amd64
+    signed_by: /etc/apt/keyrings/docker.gpg
+  register: docker_repo
+  when: not ansible_check_mode or 'python3-debian' in ansible_facts.packages
+
+# Updated by unattended-upgrades like any other package.
+- name: Install Docker
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+      - python3-docker
+      - nfs-common
+    update_cache: "{{ docker_repo is changed }}"
+    state: present
+  register: docker_install
+  when: not ansible_check_mode or (docker_repo is not skipped and docker_repo is not changed)
+
+- name: Note whether Docker is installed
+  ansible.builtin.set_fact:
+    docker_present: "{{ not ansible_check_mode or 'docker-ce' in ansible_facts.packages }}"
+
+- name: Run Docker
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+  when: docker_present
+
+# Before daemon.json: dockerd won't start with log-driver loki and no plugin.
+- name: Read the installed Loki driver
+  ansible.builtin.command:
+    cmd: docker plugin inspect loki --format {% raw %}'{{.PluginReference}}'{% endraw %}
+  register: docker_loki_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: docker_present
+
+- name: Install the Loki driver
+  community.docker.docker_plugin:
+    plugin_name: grafana/loki-docker-driver:{{ docker_loki_driver_version }}
+    alias: loki
+    state: enable
+  when:
+    - docker_present
+    - docker_loki_installed.rc != 0
+
+# docker_plugin doesn't notice a tag change, so an upgrade is done by hand. A failed
+# upgrade still enables the plugin again before the play stops.
+- name: Upgrade the Loki driver
+  when:
+    - docker_present
+    - docker_loki_installed.rc == 0
+    - not docker_loki_installed.stdout.endswith('/grafana/loki-docker-driver:' ~ docker_loki_driver_version)
+  block:
+    - name: Disable the Loki driver
+      ansible.builtin.command:
+        cmd: docker plugin disable loki --force
+      register: docker_loki_disable
+      changed_when: docker_loki_disable.rc == 0
+      failed_when: docker_loki_disable.rc != 0 and 'already disabled' not in docker_loki_disable.stderr
+
+    - name: Upgrade the Loki driver to {{ docker_loki_driver_version }}
+      ansible.builtin.command:
+        cmd: docker plugin upgrade loki grafana/loki-docker-driver:{{ docker_loki_driver_version }} --grant-all-permissions
+      changed_when: true
+      notify: Restart docker
+  rescue:
+    - name: Enable the old Loki driver again
+      ansible.builtin.command:
+        cmd: docker plugin enable loki
+      changed_when: true
+      failed_when: false
+
+    - name: Stop after the failed upgrade
+      ansible.builtin.fail:
+        msg: "The Loki driver upgrade failed; the old version is enabled again."
+
+# Also covers a plugin left disabled by hand or by an earlier failure.
+- name: Enable the Loki driver
+  community.docker.docker_plugin:
+    plugin_name: grafana/loki-docker-driver:{{ docker_loki_driver_version }}
+    alias: loki
+    state: enable
+  when:
+    - docker_present
+    - docker_loki_installed.rc == 0
+
+- name: Write daemon.json
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart docker
+  when: docker_present
+
+# A handler would wait for the end of the play; the service roles need the new
+# settings before they create containers.
+- name: Apply a changed daemon.json now
+  ansible.builtin.meta: flush_handlers
