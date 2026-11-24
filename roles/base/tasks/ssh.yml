@@ -11,14 +11,12 @@
 # arrives masqueraded as the WireGuard guest). README.md, "Temporary laptop key".
 - name: Note the work laptop key for this guest
   ansible.builtin.set_fact:
-    base_work_key: >-
-      {{ ('\nfrom="' ~ wireguard_lan_ip ~ '" ' ~ emil_ssh_key_work)
-         if ('vm' in group_names and emil_ssh_key_work | default('') != '') else '' }}
+    base_work_keys: "{{ ['from=\"' ~ wireguard_lan_ip ~ '\" ' ~ emil_ssh_key_work] if ('vm' in group_names and emil_ssh_key_work | default('') != '') else [] }}"
 
 - name: Allow exactly your key and the controller's for the login user
   ansible.posix.authorized_key:
     user: "{{ ansible_user }}"
-    key: "{{ emil_ssh_key }}\n{{ emil_ssh_key_temp }}\n{{ controller_ssh_key }}{{ base_work_key }}"
+    key: "{{ ([emil_ssh_key, emil_ssh_key_temp, controller_ssh_key] + base_work_keys) | join('\n') }}"
     exclusive: true
     state: present
   when: controller_ssh_key_previous == ""
@@ -27,7 +25,7 @@
 - name: Allow your key and both controller keys for the login user
   ansible.posix.authorized_key:
     user: "{{ ansible_user }}"
-    key: "{{ emil_ssh_key }}\n{{ emil_ssh_key_temp }}\n{{ controller_ssh_key }}\n{{ controller_ssh_key_previous }}{{ base_work_key }}"
+    key: "{{ ([emil_ssh_key, emil_ssh_key_temp, controller_ssh_key, controller_ssh_key_previous] + base_work_keys) | join('\n') }}"
     exclusive: true
     state: present
   when: controller_ssh_key_previous != ""
