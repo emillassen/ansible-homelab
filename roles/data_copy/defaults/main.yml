@@ -7,6 +7,8 @@ data_copy_exclude: []
 # Owner of everything unpacked on the new guest.
 data_copy_owner: root
 data_copy_group: root
+# Optional. Empty the directory before unpacking (a package already filled it).
+data_copy_clean: false
 data_copy_staging: /home/ansible/transfer
 # Optional. Stopped after the marker check and started again after the import.
 data_copy_service: ""

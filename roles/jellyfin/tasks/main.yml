@@ -1,0 +1,112 @@
+---
+# The key is in the repo, so a rebuild doesn't trust whatever the server serves that day.
+# Fingerprint 4918AABC486CA052358D778D49023CD01DE21A7B, no expiry.
+- name: Install the Jellyfin signing key
+  ansible.builtin.copy:
+    src: jellyfin-repo.gpg
+    dest: /etc/apt/keyrings/jellyfin.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Jellyfin repo
+  ansible.builtin.deb822_repository:
+    name: jellyfin
+    types: deb
+    uris: https://repo.jellyfin.org/debian
+    suites: "{{ ansible_facts.distribution_release }}"
+    components: main
+    architectures: amd64
+    signed_by: /etc/apt/keyrings/jellyfin.gpg
+  register: jellyfin_repo
+  # base installs python3-debian, which the module needs; a fresh guest under --check has none yet.
+  when: not ansible_check_mode or 'python3-debian' in ansible_facts.packages
+
+# Under --check a repo that isn't there yet has no packages to resolve.
+# policy_rc_d stops the package from starting an empty Jellyfin with an open setup wizard.
+- name: Install Jellyfin
+  ansible.builtin.apt:
+    name: jellyfin
+    update_cache: "{{ jellyfin_repo is changed }}"
+    policy_rc_d: 101
+    state: present
+  when: not ansible_check_mode or (jellyfin_repo is not skipped and jellyfin_repo is not changed)
+
+- name: Create the Intel runtime directory
+  ansible.builtin.file:
+    path: "{{ jellyfin_intel_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  register: jellyfin_intel_dir_created
+
+# Under --check on a fresh guest the directory isn't there to download into.
+- name: Download the Intel OpenCL runtime
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "{{ jellyfin_intel_dir }}/{{ item.url | basename }}"
+    checksum: "sha256:{{ item.sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ jellyfin_intel_debs }}"
+  loop_control:
+    label: "{{ item.url | basename }}"
+  register: jellyfin_intel_download
+  when: not ansible_check_mode or jellyfin_intel_dir_created is not changed
+
+# apt skips a deb whose version is already installed. Under --check a deb that
+# would be downloaded isn't on disk yet.
+- name: Install the Intel OpenCL runtime
+  ansible.builtin.apt:
+    deb: "{{ item.dest }}"
+  loop: "{{ jellyfin_intel_download.results }}"
+  loop_control:
+    label: "{{ item.dest | default(item.item.url) | basename }}"
+  when: not ansible_check_mode or (item is not skipped and item is not changed)
+  notify: Restart jellyfin
+
+- name: Find old Intel runtime downloads
+  ansible.builtin.find:
+    paths: "{{ jellyfin_intel_dir }}"
+    patterns: "*.deb"
+  register: jellyfin_intel_files
+  when: not ansible_check_mode or jellyfin_intel_dir_created is not changed
+
+- name: Delete old Intel runtime downloads
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ jellyfin_intel_files.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: item.path | basename not in jellyfin_intel_debs | map(attribute='url') | map('basename')
+
+# The GPU is passed in with dev0 (see the README) and owned by render inside the guest.
+- name: Create the render group
+  ansible.builtin.group:
+    name: render
+    system: true
+
+- name: Let Jellyfin use the GPU
+  ansible.builtin.user:
+    name: jellyfin
+    groups: [render, video]
+    append: true
+  when: not ansible_check_mode or 'jellyfin' in ansible_facts.packages
+  notify: Restart jellyfin
+
+- name: Check for the migrated data
+  ansible.builtin.stat:
+    path: "{{ jellyfin_marker }}"
+  register: jellyfin_migrated
+
+# The package starts Jellyfin with an empty library and an open setup wizard.
+# It stays stopped until `run migrate` has copied the real data.
+- name: Run Jellyfin once its data is here
+  ansible.builtin.service:
+    name: jellyfin
+    state: "{{ 'started' if jellyfin_migrated.stat.exists else 'stopped' }}"
+    enabled: "{{ jellyfin_migrated.stat.exists }}"
+  when: not ansible_check_mode or 'jellyfin' in ansible_facts.packages

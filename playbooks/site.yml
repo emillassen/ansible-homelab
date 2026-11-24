@@ -66,3 +66,8 @@
   hosts: managed:&esphome
   roles:
     - esphome
+
+- name: Jellyfin
+  hosts: managed:&jellyfin
+  roles:
+    - jellyfin

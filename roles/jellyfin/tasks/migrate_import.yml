@@ -1,0 +1,30 @@
+---
+# Both directories are emptied first: the package's first start left a fresh
+# database and config behind. The data directory goes last, because its marker
+# is what lets the main role start Jellyfin.
+- name: Stop Jellyfin before replacing its data
+  ansible.builtin.service:
+    name: jellyfin
+    state: stopped
+
+- name: Import the config and data directories
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: "{{ jellyfin_dir.name }}"
+    data_copy_path: "{{ jellyfin_dir.path }}"
+    data_copy_owner: jellyfin
+    data_copy_group: jellyfin
+    data_copy_clean: true
+  loop_control:
+    loop_var: jellyfin_dir
+  loop:
+    - {name: jellyfin-config, path: "{{ jellyfin_config }}"}
+    - {name: jellyfin-data, path: "{{ jellyfin_data }}"}
+
+- name: Start Jellyfin
+  ansible.builtin.service:
+    name: jellyfin
+    state: started
+    enabled: true

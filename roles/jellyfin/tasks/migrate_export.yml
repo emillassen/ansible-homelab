@@ -1,0 +1,20 @@
+---
+# On the old guest. Stopping Jellyfin starts the outage. /var/cache/jellyfin
+# (image cache and transcodes) isn't copied; Jellyfin rebuilds it.
+- name: Stop Jellyfin on the old guest
+  ansible.builtin.service:
+    name: jellyfin
+    state: stopped
+
+- name: Export the config and data directories
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: "{{ jellyfin_dir.name }}"
+    data_copy_path: "{{ jellyfin_dir.path }}"
+  loop_control:
+    loop_var: jellyfin_dir
+  loop:
+    - {name: jellyfin-config, path: "{{ jellyfin_config }}"}
+    - {name: jellyfin-data, path: "{{ jellyfin_data }}"}

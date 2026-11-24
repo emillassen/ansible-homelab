@@ -16,6 +16,25 @@
     state: stopped
   when: data_copy_service != ""
 
+# After the marker check, so a finished import is never emptied.
+- name: Find what's already in {{ data_copy_path }}
+  ansible.builtin.find:
+    paths: "{{ data_copy_path }}"
+    file_type: any
+    hidden: true
+  register: data_copy_existing
+  when: data_copy_clean
+
+- name: Empty {{ data_copy_path }}
+  ansible.builtin.file:
+    path: "{{ data_copy_entry.path }}"
+    state: absent
+  loop: "{{ data_copy_existing.files | default([]) }}"
+  loop_control:
+    loop_var: data_copy_entry
+    label: "{{ data_copy_entry.path }}"
+  when: data_copy_clean
+
 - name: Create {{ data_copy_path }}
   ansible.builtin.file:
     path: "{{ data_copy_path }}"
