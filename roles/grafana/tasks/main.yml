@@ -1,0 +1,32 @@
+---
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ grafana_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ grafana_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: grafana_compose
+
+- name: Check for the migrated data
+  ansible.builtin.stat:
+    path: "{{ grafana_marker }}"
+  register: grafana_migrated
+
+# Without the copied data it would start a new, empty Grafana with admin/admin.
+- name: Run Grafana once its data is here
+  community.docker.docker_compose_v2:
+    project_src: "{{ grafana_project }}"
+    pull: missing
+    state: present
+  when:
+    - grafana_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and grafana_compose is not changed)

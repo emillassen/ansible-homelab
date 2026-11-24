@@ -1,0 +1,46 @@
+---
+- name: Create the project directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+  loop:
+    - "{{ loki_project }}"
+    - "{{ loki_project }}/config"
+
+- name: Create the data directory
+  ansible.builtin.file:
+    path: "{{ loki_project }}/data"
+    state: directory
+    owner: "{{ loki_uid }}"
+    group: "{{ loki_uid }}"
+    mode: "0755"
+
+- name: Write the Loki config
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: "{{ loki_project }}/config/config.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  notify: Restart loki
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ loki_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: loki_compose
+
+- name: Run Loki
+  community.docker.docker_compose_v2:
+    project_src: "{{ loki_project }}"
+    pull: missing
+    state: present
+  register: loki_service
+  # Under --check the compose file may not be written yet.
+  when: not ansible_check_mode or (docker_present and loki_compose is not changed)

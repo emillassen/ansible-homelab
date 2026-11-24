@@ -1,0 +1,17 @@
+---
+- name: Import data/
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: grafana
+    data_copy_path: "{{ grafana_project }}/data"
+    data_copy_owner: "{{ grafana_uid }}"
+    data_copy_group: "{{ grafana_uid }}"
+    data_copy_clean: true
+
+- name: Start Grafana
+  community.docker.docker_compose_v2:
+    project_src: "{{ grafana_project }}"
+    pull: missing
+    state: present

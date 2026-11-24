@@ -1,0 +1,11 @@
+# Managed by Ansible (roles/grafana).
+services:
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:{{ grafana_version }}
+    restart: unless-stopped
+    volumes:
+      - ./data:/var/lib/grafana
+    ports:
+      - "0.0.0.0:3000:3000"
+    user: "{{ grafana_uid }}"

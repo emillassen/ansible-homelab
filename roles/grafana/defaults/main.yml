@@ -1,0 +1,9 @@
+---
+# The data is copied, so this can't be older than the version that last wrote it.
+# renovate: datasource=docker depName=grafana/grafana
+grafana_version: "13.3.2"
+grafana_project: /home/emil/grafana
+# The container runs as emil (uid 1000), who owns data/.
+grafana_uid: "1000"
+# Grafana stays stopped until `run migrate` has copied data/ (grafana.db, plugins).
+grafana_marker: "{{ grafana_project }}/data/.migrated"

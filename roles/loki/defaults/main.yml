@@ -1,0 +1,7 @@
+---
+# Starts empty on a rebuild; the old guest's log history isn't copied.
+# renovate: datasource=docker depName=grafana/loki
+loki_version: "3.7.10"
+loki_project: /home/emil/loki
+# The image runs as 10001.
+loki_uid: 10001

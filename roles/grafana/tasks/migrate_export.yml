@@ -1,0 +1,16 @@
+---
+# On the old VM. Stopping Grafana starts its outage (dashboards only; Loki keeps
+# taking logs). grafana.db is SQLite, so it's copied with Grafana stopped.
+- name: Stop Grafana on the old VM
+  ansible.builtin.command:
+    cmd: docker compose stop
+    chdir: "{{ grafana_project }}"
+  changed_when: true
+
+- name: Export data/
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: grafana
+    data_copy_path: "{{ grafana_project }}/data"

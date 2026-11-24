@@ -96,3 +96,9 @@
   hosts: managed:&changedetection
   roles:
     - changedetection
+
+- name: Grafana and Loki
+  hosts: managed:&grafana-loki
+  roles:
+    - loki
+    - grafana

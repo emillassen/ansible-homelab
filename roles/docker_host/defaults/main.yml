@@ -7,3 +7,6 @@ docker_loki_url: https://loki.hjem.sh/loki/api/v1/push
 # false: json-file instead (the Loki VM itself, so it doesn't log to itself through
 # Caddy; hosts whose containers set their own driver).
 docker_loki_default: true
+# Published ports limited to one source each, e.g. [{port: 3100, allow: 192.168.1.88}].
+# The rules match the guest's current address, so they follow the cutover.
+docker_user_filter: []

@@ -1,0 +1,12 @@
+# Managed by Ansible (roles/loki).
+services:
+  loki:
+    container_name: loki
+    image: grafana/loki:{{ loki_version }}
+    restart: unless-stopped
+    volumes:
+      - ./config/config.yml:/etc/loki/config.yml:ro
+      - ./data:/loki
+    ports:
+      - "0.0.0.0:3100:3100"
+    command: -config.file=/etc/loki/config.yml

@@ -1,0 +1,17 @@
+# Managed by Ansible (roles/docker_host). Docker's published ports bypass any host
+# firewall; DOCKER-USER is where Docker lets you filter them. Runs again after every
+# Docker start (Docker keeps the chain's rules, but not across a reboot). Nothing is
+# removed on stop, so the ports are never open while the containers run.
+[Unit]
+Description=Limit who can reach published container ports
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/iptables-restore --noflush /etc/docker-user-filter.rules
+
+[Install]
+WantedBy=docker.service

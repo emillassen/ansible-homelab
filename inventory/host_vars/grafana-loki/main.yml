@@ -14,3 +14,7 @@ net_production: false
 ansible_host: 192.168.1.118
 # Logs locally (json-file), so Loki never logs to itself through Caddy.
 docker_loki_default: false
+# Published ports only Caddy may reach.
+docker_user_filter:
+  - {port: 3100, allow: 192.168.1.88}
+  - {port: 3000, allow: 192.168.1.88}
