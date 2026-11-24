@@ -2,6 +2,8 @@
 # Set by the calling role: a short name for the staging file and the directory to copy.
 data_copy_name: ""
 data_copy_path: ""
+# Optional. Paths relative to data_copy_path left out of the archive (build caches).
+data_copy_exclude: []
 # Owner of everything unpacked on the new guest.
 data_copy_owner: root
 data_copy_group: root

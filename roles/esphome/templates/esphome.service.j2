@@ -1,0 +1,23 @@
+# Managed by Ansible.
+[Unit]
+Description=ESPHome Device Builder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=esphome
+Group=esphome
+WorkingDirectory={{ esphome_home }}
+Environment=HOME={{ esphome_home }}
+ExecStart={{ esphome_venv }}/bin/esphome-device-builder {{ esphome_config }}/
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ esphome_home }}
+
+[Install]
+WantedBy=multi-user.target

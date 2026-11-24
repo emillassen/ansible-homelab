@@ -12,7 +12,10 @@
 
 - name: Pack {{ data_copy_path }}
   ansible.builtin.command:
-    cmd: tar -C {{ data_copy_path }} -czf /root/migrate-{{ data_copy_name }}.tar.gz .
+    cmd: >-
+      tar -C {{ data_copy_path }}
+      {% for e in data_copy_exclude %}--exclude=./{{ e | quote }} {% endfor %}
+      -czf /root/migrate-{{ data_copy_name }}.tar.gz .
   changed_when: true
 
 - name: Create the staging directory on the controller

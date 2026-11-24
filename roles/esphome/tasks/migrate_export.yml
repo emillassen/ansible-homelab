@@ -1,0 +1,16 @@
+---
+- name: Stop ESPHome on the old guest
+  ansible.builtin.service:
+    name: esphome-device-builder
+    state: stopped
+
+# .esphome/build is build output (hundreds of MB) and is recreated on the next compile.
+# The rest of .esphome/ is dashboard state (storage/*.json, ignored devices) and is kept.
+- name: Export the config directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: esphome
+    data_copy_path: "{{ esphome_legacy_config }}"
+    data_copy_exclude: [.esphome/build]

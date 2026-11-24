@@ -61,3 +61,8 @@
   roles:
     - nodejs
     - zigbee2mqtt
+
+- name: ESPHome
+  hosts: managed:&esphome
+  roles:
+    - esphome

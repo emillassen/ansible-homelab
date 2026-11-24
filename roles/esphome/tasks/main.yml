@@ -1,0 +1,79 @@
+---
+- name: Install Python and the build dependencies
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-venv
+      # ansible.builtin.pip imports it from the system Python before the venv exists.
+      - python3-packaging
+      - git
+      - libusb-1.0-0
+    state: present
+
+# PlatformIO keeps its toolchains in ~/.platformio and ESPHome its cache in ~/.cache.
+- name: Create the esphome user
+  ansible.builtin.user:
+    name: esphome
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ esphome_home }}"
+    create_home: false
+
+- name: Create the home and config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: esphome
+    group: esphome
+    mode: "0750"
+  loop:
+    - "{{ esphome_home }}"
+    - "{{ esphome_config }}"
+
+- name: Create the venv directory
+  ansible.builtin.file:
+    path: "{{ esphome_venv | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy the pinned requirements
+  ansible.builtin.copy:
+    src: requirements.txt
+    dest: "{{ esphome_venv | dirname }}/requirements.txt"
+    owner: root
+    group: root
+    mode: "0644"
+  register: esphome_requirements
+
+# Root owns the venv, so the dashboard can't change its own packages.
+- name: Install ESPHome into the venv
+  ansible.builtin.pip:
+    requirements: "{{ esphome_venv | dirname }}/requirements.txt"
+    virtualenv: "{{ esphome_venv }}"
+    virtualenv_command: python3 -m venv
+  when: not ansible_check_mode or ('python3-venv' in ansible_facts.packages and 'python3-packaging' in ansible_facts.packages)
+  notify: Restart esphome
+
+- name: Write the service unit
+  ansible.builtin.template:
+    src: esphome.service.j2
+    dest: /etc/systemd/system/esphome.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart esphome
+
+- name: Check for the service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/esphome.service
+  register: esphome_unit
+
+- name: Start ESPHome
+  ansible.builtin.systemd_service:
+    name: esphome
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode or esphome_unit.stat.exists

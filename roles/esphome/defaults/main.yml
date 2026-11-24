@@ -1,0 +1,6 @@
+---
+esphome_home: /var/lib/esphome
+esphome_config: /var/lib/esphome/config
+esphome_venv: /opt/esphome/venv
+# Where the old community-scripts guest keeps the YAML; only migrate_export reads it.
+esphome_legacy_config: /root/config

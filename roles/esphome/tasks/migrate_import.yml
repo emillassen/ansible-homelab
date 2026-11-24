@@ -1,0 +1,11 @@
+---
+- name: Import the config directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: esphome
+    data_copy_path: "{{ esphome_config }}"
+    data_copy_owner: esphome
+    data_copy_group: esphome
+    data_copy_service: esphome
