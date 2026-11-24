@@ -11,7 +11,7 @@ ip_static: true
 startup: ""
 net_production: false
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
-ansible_host: 192.168.1.88
+ansible_host: 192.168.1.218
 ufw_allow:
   - port: "80"
     proto: tcp
