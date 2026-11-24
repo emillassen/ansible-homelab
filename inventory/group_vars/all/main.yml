@@ -8,6 +8,10 @@ emil_ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXHWIy7fzt9lviN1c9Yd7fuA7hCO
 # Temporary laptop key (no passphrase) so the rebuild doesn't need a YubiKey touch for
 # every SSH login and commit. Remove it once everything is rebuilt: README.md, "Temporary laptop key".
 emil_ssh_key_temp: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOUMl3iUK0kDvdqxcSV88jpzpHfvALroKDsa4Rxjobb homelab-temp-laptop"
+# Temporary work-laptop key: controller only, human verbs, and only through WireGuard
+# (the tunnel reaches the LAN as wireguard_lan_ip). Removed with emil_ssh_key_temp.
+emil_ssh_key_work: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE+IyJ3jdflc3L6JJnruytmgXV01DDn538RB+rPnsowR homelab-work-laptop"
+wireguard_lan_ip: 192.168.1.102
 # Printed by scripts/new-controller-keys.sh.
 controller_ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILN3J6Yob8INNpKUODlZxy5FSonPRb2FAa3rAChBC/zr ansible-controller"
 # Optional. Empty means no agent access from 207. Printed by the 207 block in README.md.
