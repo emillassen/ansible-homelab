@@ -52,6 +52,17 @@
     group: "{{ data_copy_group }}"
   when: not ansible_check_mode
 
+# tar creates parent directories it has no entry for (data_copy_include: [data/x])
+# as root, and unarchive only sets the owner on the entries.
+- name: Give everything in {{ data_copy_path }} to {{ data_copy_owner }}
+  ansible.builtin.file:
+    path: "{{ data_copy_path }}"
+    state: directory
+    recurse: true
+    owner: "{{ data_copy_owner }}"
+    group: "{{ data_copy_group }}"
+  when: not ansible_check_mode
+
 - name: Mark the import done
   ansible.builtin.copy:
     content: ""
