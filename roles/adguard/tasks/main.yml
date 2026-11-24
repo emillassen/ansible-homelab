@@ -7,13 +7,17 @@
     home: "{{ adguard_data }}"
     create_home: false
 
-- name: Create the data directory
+# AdGuard Home warns at startup unless both are 0700.
+- name: Create the data directories
   ansible.builtin.file:
-    path: "{{ adguard_data }}"
+    path: "{{ item }}"
     state: directory
     owner: adguardhome
     group: adguardhome
     mode: "0700"
+  loop:
+    - "{{ adguard_data }}"
+    - "{{ adguard_data }}/data"
 
 - name: Create the app and download directories
   ansible.builtin.file:
