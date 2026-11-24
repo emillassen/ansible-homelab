@@ -9,3 +9,25 @@
     data_copy_owner: esphome
     data_copy_group: esphome
     data_copy_service: esphome
+
+# The dashboard's metadata stores absolute build paths; on the old guest they were under
+# /root/config, which doesn't exist here (and ProtectHome hides /root). Without this a
+# device whose metadata names the old path fails to load until it's compiled again.
+- name: Find the dashboard metadata
+  ansible.builtin.find:
+    paths:
+      - "{{ esphome_config }}/.esphome/storage"
+      - "{{ esphome_config }}/.esphome/idedata"
+    patterns: "*.json"
+  register: esphome_metadata
+
+- name: Point the metadata at the new config directory
+  ansible.builtin.replace:
+    path: "{{ item.path }}"
+    regexp: "{{ esphome_legacy_config | regex_escape }}/"
+    replace: "{{ esphome_config }}/"
+  loop: "{{ esphome_metadata.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: not ansible_check_mode
+  notify: Restart esphome
