@@ -1,0 +1,12 @@
+---
+# No data_copy_service: the new guest's service stays stopped until production
+# (see main.yml), so the import must not start it.
+- name: Import the data directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: zigbee2mqtt
+    data_copy_path: "{{ zigbee2mqtt_data }}"
+    data_copy_owner: zigbee2mqtt
+    data_copy_group: zigbee2mqtt

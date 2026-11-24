@@ -1,0 +1,164 @@
+---
+# unix-dgram (systemd notify) and the serialport bindings may compile with node-gyp.
+- name: Install the build tools
+  ansible.builtin.apt:
+    name:
+      - make
+      - g++
+      - python3
+    state: present
+
+- name: Install pnpm {{ zigbee2mqtt_pnpm_version }}
+  community.general.npm:
+    name: pnpm
+    version: "{{ zigbee2mqtt_pnpm_version }}"
+    global: true
+  when: not ansible_check_mode or 'nodejs' in ansible_facts.packages
+
+- name: Create the zigbee2mqtt user
+  ansible.builtin.user:
+    name: zigbee2mqtt
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ zigbee2mqtt_data }}"
+    create_home: false
+
+- name: Create the app directory
+  ansible.builtin.file:
+    path: "{{ zigbee2mqtt_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The marker holds the installed version and is written last, so a Renovate bump, a
+# revert or a failed build installs again on the next run.
+- name: Read the installed version
+  ansible.builtin.slurp:
+    src: "{{ zigbee2mqtt_dir }}/.version"
+  register: zigbee2mqtt_marker
+  failed_when: false
+
+- name: Decide whether to build
+  ansible.builtin.set_fact:
+    zigbee2mqtt_install: "{{ (zigbee2mqtt_marker.content | default('') | b64decode | trim) != zigbee2mqtt_version }}"
+
+- name: Check for the service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/zigbee2mqtt.service
+  register: zigbee2mqtt_unit
+
+- name: Check for the configuration
+  ansible.builtin.stat:
+    path: "{{ zigbee2mqtt_data }}/configuration.yaml"
+  register: zigbee2mqtt_config
+
+# Don't swap the tree under a running process.
+- name: Stop Zigbee2MQTT for the upgrade
+  ansible.builtin.systemd_service:
+    name: zigbee2mqtt
+    state: stopped
+  when:
+    - zigbee2mqtt_install
+    - zigbee2mqtt_unit.stat.exists
+
+# Cleared before the tree is touched, so a failed upgrade is never taken for the old version.
+- name: Clear the version marker
+  ansible.builtin.file:
+    path: "{{ zigbee2mqtt_dir }}/.version"
+    state: absent
+  when: zigbee2mqtt_install
+
+# Everything but data/ goes, so files a version dropped don't linger or break the build.
+- name: Find the old app files
+  ansible.builtin.find:
+    paths: "{{ zigbee2mqtt_dir }}"
+    file_type: any
+    hidden: true
+    excludes: ["data"]
+  register: zigbee2mqtt_old
+  when: zigbee2mqtt_install
+
+- name: Remove the old app files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ zigbee2mqtt_old.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: zigbee2mqtt_install
+
+# A tarball has no .git, so dist/.hash and the start-time check both read "unknown"
+# and Zigbee2MQTT never tries to rebuild itself at start.
+- name: Unpack the Zigbee2MQTT {{ zigbee2mqtt_version }} source
+  ansible.builtin.unarchive:
+    src: https://github.com/Koenkk/zigbee2mqtt/archive/refs/tags/{{ zigbee2mqtt_version }}.tar.gz
+    dest: "{{ zigbee2mqtt_dir }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    owner: root
+    group: root
+  # Under --check the app directory may not exist yet.
+  when:
+    - zigbee2mqtt_install
+    - not ansible_check_mode
+  notify: Restart zigbee2mqtt
+
+# pnpm-workspace.yaml lists which dependencies may run build scripts.
+- name: Install the dependencies
+  ansible.builtin.command:
+    cmd: pnpm install --frozen-lockfile
+    chdir: "{{ zigbee2mqtt_dir }}"
+  environment:
+    CI: "true"
+  when:
+    - zigbee2mqtt_install
+    - not ansible_check_mode
+
+- name: Build Zigbee2MQTT
+  ansible.builtin.command:
+    cmd: pnpm run build
+    chdir: "{{ zigbee2mqtt_dir }}"
+  environment:
+    CI: "true"
+  when:
+    - zigbee2mqtt_install
+    - not ansible_check_mode
+  notify: Restart zigbee2mqtt
+
+- name: Write the version marker
+  ansible.builtin.copy:
+    content: "{{ zigbee2mqtt_version }}\n"
+    dest: "{{ zigbee2mqtt_dir }}/.version"
+    mode: "0644"
+  when: zigbee2mqtt_install
+
+- name: Create the data directory
+  ansible.builtin.file:
+    path: "{{ zigbee2mqtt_data }}"
+    state: directory
+    owner: zigbee2mqtt
+    group: zigbee2mqtt
+    mode: "0750"
+
+- name: Write the service unit
+  ansible.builtin.template:
+    src: zigbee2mqtt.service.j2
+    dest: /etc/systemd/system/zigbee2mqtt.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart zigbee2mqtt
+
+# Only one client may hold the coordinator, so the service runs only in production and
+# only once run migrate has brought the configuration (with the network key) over.
+- name: Start or stop Zigbee2MQTT
+  ansible.builtin.systemd_service:
+    name: zigbee2mqtt
+    state: "{{ 'started' if zigbee2mqtt_run else 'stopped' }}"
+    enabled: "{{ zigbee2mqtt_run }}"
+    daemon_reload: true
+  register: zigbee2mqtt_service
+  vars:
+    zigbee2mqtt_run: "{{ net_production and zigbee2mqtt_config.stat.exists }}"
+  when: not ansible_check_mode or zigbee2mqtt_unit.stat.exists

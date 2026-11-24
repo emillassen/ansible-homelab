@@ -1,0 +1,27 @@
+# Managed by Ansible. From the Zigbee2MQTT Linux guide.
+[Unit]
+Description=Zigbee2MQTT
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=zigbee2mqtt
+Group=zigbee2mqtt
+WorkingDirectory={{ zigbee2mqtt_dir }}
+Environment=NODE_ENV=production
+Environment=ZIGBEE2MQTT_DATA={{ zigbee2mqtt_data }}
+ExecStart=/usr/bin/node index.js
+StandardOutput=journal
+StandardError=inherit
+WatchdogSec=10s
+Restart=always
+RestartSec=10s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ zigbee2mqtt_data }}
+
+[Install]
+WantedBy=multi-user.target

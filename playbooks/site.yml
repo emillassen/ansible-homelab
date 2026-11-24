@@ -55,3 +55,9 @@
   roles:
     - nodejs
     - homepage
+
+- name: Zigbee2MQTT
+  hosts: managed:&zigbee2mqtt
+  roles:
+    - nodejs
+    - zigbee2mqtt

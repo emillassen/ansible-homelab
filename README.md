@@ -307,7 +307,7 @@ Before each rebuild, the report lists the data to copy, how, and how it will be 
 
    The second `apply` must show `changed=0`. Then test through the Caddy hostname with real data.
 
-1. Rollback, on the Proxmox host. `<mac_temp>` is in `inventory/host_vars/<host>/main.yml`. For a VM use `qm` and `--net0 virtio=<mac_temp>,bridge=vmbr0,firewall=1`:
+1. Rollback, on the Proxmox host. `<mac_temp>` is in `inventory/host_vars/<host>/main.yml`. For a VM use `qm` and `--net0 virtio=<mac_temp>,bridge=vmbr0,firewall=1`. For Zigbee2MQTT run `pct exec <new> -- systemctl disable --now zigbee2mqtt` first, so 116 can't take the coordinator back on its next boot:
 
    ```sh
    pct stop <new>

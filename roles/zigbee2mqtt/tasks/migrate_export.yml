@@ -1,0 +1,14 @@
+---
+# Stopping releases the coordinator connection and flushes database.db and state.json.
+- name: Stop Zigbee2MQTT on the old guest
+  ansible.builtin.service:
+    name: zigbee2mqtt
+    state: stopped
+
+- name: Export the data directory
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: zigbee2mqtt
+    data_copy_path: "{{ zigbee2mqtt_data }}"
