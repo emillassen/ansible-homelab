@@ -1,0 +1,20 @@
+# Managed by Ansible. Upstream's unit, with gunicorn started directly instead of through wgd.sh.
+[Unit]
+Description=WGDashboard
+After=network-online.target
+Wants=network-online.target
+ConditionPathIsDirectory=/etc/wireguard
+
+[Service]
+Type=forking
+PIDFile={{ wireguard_dashboard_src }}/gunicorn.pid
+WorkingDirectory={{ wireguard_dashboard_src }}
+Environment=CONFIGURATION_PATH={{ wireguard_dashboard_data }}
+ExecStart={{ wireguard_dashboard_src }}/venv/bin/gunicorn --config ./gunicorn.conf.py
+TimeoutSec=120
+PrivateTmp=yes
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

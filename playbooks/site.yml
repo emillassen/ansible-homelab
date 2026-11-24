@@ -71,3 +71,8 @@
   hosts: managed:&jellyfin
   roles:
     - jellyfin
+
+- name: WireGuard
+  hosts: managed:&wireguard
+  roles:
+    - wireguard

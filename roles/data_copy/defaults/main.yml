@@ -4,6 +4,8 @@ data_copy_name: ""
 data_copy_path: ""
 # Optional. Paths relative to data_copy_path left out of the archive (build caches).
 data_copy_exclude: []
+# Optional. Paths relative to data_copy_path to pack, in place of the whole directory.
+data_copy_include: [.]
 # Owner of everything unpacked on the new guest.
 data_copy_owner: root
 data_copy_group: root

@@ -1,0 +1,19 @@
+---
+# The dashboard data goes last, because its marker is what lets the main role start it.
+- name: Import /etc/wireguard
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: wireguard-etc
+    data_copy_path: /etc/wireguard
+    data_copy_clean: true
+
+- name: Import the dashboard data
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: wireguard-dashboard
+    data_copy_path: "{{ wireguard_dashboard_data }}"
+    data_copy_clean: true

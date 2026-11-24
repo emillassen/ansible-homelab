@@ -18,7 +18,7 @@
   "packageRules": [
     {
       "description": "Release tags with a v prefix; the pins in role defaults are bare versions",
-      "matchPackageNames": ["gnmyt/myspeed", "alam00000/bentopdf", "gethomepage/homepage"],
+      "matchPackageNames": ["gnmyt/myspeed", "alam00000/bentopdf", "gethomepage/homepage", "WGDashboard/WGDashboard"],
       "extractVersion": "^v(?<version>.+)$"
     }
   ]

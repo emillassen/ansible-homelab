@@ -1,0 +1,12 @@
+---
+# renovate: datasource=github-releases depName=WGDashboard/WGDashboard
+wireguard_dashboard_version: "4.3.4"
+wireguard_dashboard_dir: /opt/wgdashboard
+wireguard_dashboard_src: /opt/wgdashboard/src
+# The ini (account, TOTP secret, settings), the OIDC providers and the SQLite
+# databases (peer metadata, jobs, logs). Copied by `run migrate`.
+wireguard_dashboard_data: /var/lib/wgdashboard
+# Where the old community-scripts guest keeps them.
+wireguard_legacy_src: /opt/WGDashboard/src
+# The dashboard (and with it wg0, which it brings up) only runs once this exists.
+wireguard_marker: "{{ wireguard_dashboard_data }}/.migrated"

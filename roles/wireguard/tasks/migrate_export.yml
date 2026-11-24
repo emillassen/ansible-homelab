@@ -1,0 +1,32 @@
+---
+# On the old guest. Stopping the dashboard and taking wg0 down starts the VPN outage;
+# with SaveConfig = true, wg-quick down writes the live peers back to wg0.conf first.
+- name: Stop WGDashboard on the old guest
+  ansible.builtin.service:
+    name: wg-dashboard
+    state: stopped
+
+- name: Take wg0 down on the old guest
+  ansible.builtin.command:
+    cmd: wg-quick down wg0
+  register: wireguard_down
+  changed_when: wireguard_down.rc == 0
+  failed_when: wireguard_down.rc != 0 and 'is not a WireGuard interface' not in wireguard_down.stderr
+
+- name: Export /etc/wireguard
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: wireguard-etc
+    data_copy_path: /etc/wireguard
+
+# Only the data; the app, venv, logs and pid file are rebuilt.
+- name: Export the dashboard data
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: wireguard-dashboard
+    data_copy_path: "{{ wireguard_legacy_src }}"
+    data_copy_include: [db, plugins, wg-dashboard.ini, wg-dashboard-oidc-providers.json]

@@ -1,0 +1,216 @@
+---
+- name: Install WireGuard, Python and Node
+  ansible.builtin.apt:
+    name:
+      - wireguard-tools
+      # wg0.conf's PostUp and PostDown use iptables for forwarding and NAT.
+      - iptables
+      - net-tools
+      - python3
+      - python3-venv
+      # ansible.builtin.pip imports it from the system Python before the venv exists.
+      - python3-packaging
+      # The frontend is built on the guest; Vite needs Node 20.19 or later.
+      - nodejs
+      - npm
+    state: present
+
+# wg0.conf's PostUp sets these too; this keeps them across a reboot before wg0 is up.
+- name: Enable forwarding
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    sysctl_file: /etc/sysctl.d/60-wireguard.conf
+    sysctl_set: true
+  loop:
+    - net.ipv4.ip_forward
+    - net.ipv6.conf.all.forwarding
+
+- name: Create /etc/wireguard
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Create the data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ wireguard_dashboard_data }}"
+    - "{{ wireguard_dashboard_data }}/db"
+    - "{{ wireguard_dashboard_data }}/plugins"
+
+- name: Create the app directory
+  ansible.builtin.file:
+    path: "{{ wireguard_dashboard_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The marker holds the installed version and is written last, so a Renovate bump, a
+# revert or a failed step unpacks and builds again on the next run.
+- name: Read the installed version
+  ansible.builtin.slurp:
+    src: "{{ wireguard_dashboard_dir }}/.version"
+  register: wireguard_version_marker
+  failed_when: false
+
+- name: Decide whether to install
+  ansible.builtin.set_fact:
+    wireguard_install: "{{ (wireguard_version_marker.content | default('') | b64decode | trim) != wireguard_dashboard_version }}"
+
+- name: Check for the service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/wg-dashboard.service
+  register: wireguard_unit
+
+# Don't swap the tree under a running process.
+- name: Stop WGDashboard for the upgrade
+  ansible.builtin.systemd_service:
+    name: wg-dashboard
+    state: stopped
+  when:
+    - wireguard_install
+    - wireguard_unit.stat.exists
+
+# Cleared before the tree is touched, so a failed upgrade is never taken for the old version.
+- name: Clear the version marker
+  ansible.builtin.file:
+    path: "{{ wireguard_dashboard_dir }}/.version"
+    state: absent
+  when: wireguard_install
+
+# The data lives in wireguard_dashboard_data, so the whole tree can go.
+- name: Find the old app files
+  ansible.builtin.find:
+    paths: "{{ wireguard_dashboard_dir }}"
+    file_type: any
+    hidden: true
+  register: wireguard_old
+  when: wireguard_install
+
+- name: Remove the old app files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ wireguard_old.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: wireguard_install
+
+- name: Unpack WGDashboard {{ wireguard_dashboard_version }}
+  ansible.builtin.unarchive:
+    src: https://github.com/WGDashboard/WGDashboard/archive/refs/tags/v{{ wireguard_dashboard_version }}.tar.gz
+    dest: "{{ wireguard_dashboard_dir }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    owner: root
+    group: root
+  # Under --check the app directory may not exist yet.
+  when:
+    - wireguard_install
+    - not ansible_check_mode
+  notify: Restart wg-dashboard
+
+# What wgd.sh install does, without its apt and pip upgrades.
+- name: Build the frontends
+  ansible.builtin.shell:
+    cmd: npm ci --no-audit --no-fund && npm run build
+    chdir: "{{ wireguard_dashboard_src }}/static/{{ item }}"
+  loop: [app, client]
+  changed_when: true
+  when:
+    - wireguard_install
+    - not ansible_check_mode
+
+- name: Remove the frontend build dependencies
+  ansible.builtin.file:
+    path: "{{ wireguard_dashboard_src }}/static/{{ item }}/node_modules"
+    state: absent
+  loop: [app, client]
+  when: wireguard_install
+
+- name: Install the Python dependencies into the venv
+  ansible.builtin.pip:
+    requirements: "{{ wireguard_dashboard_src }}/requirements.txt"
+    virtualenv: "{{ wireguard_dashboard_src }}/venv"
+    virtualenv_command: python3 -m venv
+  # Under --check an install that would unpack has no requirements.txt yet.
+  when: not ansible_check_mode or not wireguard_install
+  notify: Restart wg-dashboard
+
+# The ini and OIDC file follow CONFIGURATION_PATH, but the ini, db/ and plugins/ are
+# also opened relative to the working directory, so those are links to the data.
+- name: Link the data into the app
+  ansible.builtin.file:
+    src: "{{ wireguard_dashboard_data }}/{{ item }}"
+    dest: "{{ wireguard_dashboard_src }}/{{ item }}"
+    state: link
+    force: true
+  loop: [wg-dashboard.ini, db, plugins]
+  when: not ansible_check_mode or not wireguard_install
+
+- name: Create the runtime directories
+  ansible.builtin.file:
+    path: "{{ wireguard_dashboard_src }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [log, download, attachments]
+  when: not ansible_check_mode or not wireguard_install
+
+- name: Write the version marker
+  ansible.builtin.copy:
+    content: "{{ wireguard_dashboard_version }}\n"
+    dest: "{{ wireguard_dashboard_dir }}/.version"
+    mode: "0644"
+  when: wireguard_install
+
+- name: Write the service unit
+  ansible.builtin.template:
+    src: wg-dashboard.service.j2
+    dest: /etc/systemd/system/wg-dashboard.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart wg-dashboard
+
+- name: Check for the migrated data
+  ansible.builtin.stat:
+    path: "{{ wireguard_marker }}"
+  register: wireguard_migrated
+
+# The dashboard brings wg0 up (autostart in its ini). It holds the same keys as the
+# old guest, so it only runs on the production MAC and address, after the copy.
+- name: Decide whether to run
+  ansible.builtin.set_fact:
+    wireguard_run: "{{ net_production and wireguard_migrated.stat.exists }}"
+
+- name: Run WGDashboard in production
+  ansible.builtin.systemd_service:
+    name: wg-dashboard
+    state: "{{ 'started' if wireguard_run else 'stopped' }}"
+    enabled: "{{ wireguard_run }}"
+    daemon_reload: true
+  register: wireguard_service
+  when: not ansible_check_mode or wireguard_unit.stat.exists
+
+# Stopping gunicorn leaves wg0 up, so closing the gate takes it down explicitly.
+- name: Take wg0 down outside production
+  ansible.builtin.command:
+    cmd: wg-quick down wg0
+  register: wireguard_down
+  changed_when: wireguard_down.rc == 0
+  failed_when: false
+  when:
+    - not wireguard_run
+    - not ansible_check_mode
+    - "'wg0' in ansible_facts.interfaces"

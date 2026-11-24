@@ -2,7 +2,7 @@
 vmid: 118
 legacy_host: wireguard-old
 cores: 1
-memory: 512
+memory: 1024
 disk_gb: 8
 mac_temp: "BC:24:11:EB:BD:23"
 mac_production: "BC:24:11:BF:D9:1A"
@@ -17,3 +17,4 @@ ufw_allow:
     proto: udp
   - port: "10086"
     proto: tcp
+ufw_routed: allow

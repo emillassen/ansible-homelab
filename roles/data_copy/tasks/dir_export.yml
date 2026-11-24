@@ -15,7 +15,8 @@
     cmd: >-
       tar -C {{ data_copy_path }}
       {% for e in data_copy_exclude %}--exclude=./{{ e | quote }} {% endfor %}
-      -czf /root/migrate-{{ data_copy_name }}.tar.gz .
+      -czf /root/migrate-{{ data_copy_name }}.tar.gz
+      {% for i in data_copy_include %}{{ ('./' ~ i) | regex_replace('^\\./\\.$', '.') | quote }} {% endfor %}
   changed_when: true
 
 - name: Create the staging directory on the controller
