@@ -1,0 +1,17 @@
+---
+# A bad Caddyfile stops the play here and leaves the running Caddy on the old one.
+- name: Restart caddy
+  ansible.builtin.command:
+    cmd: "{{ caddy_bin }} validate --config /etc/caddy/Caddyfile"
+  environment:
+    CLOUDFLARE_API_TOKEN: "{{ caddy_cloudflare_api_token }}"
+  # Changed, so it notifies the restart below.
+  changed_when: true
+  when: caddy_migrated.stat.exists and caddy_service is not changed
+  notify: Restart the caddy service
+
+- name: Restart the caddy service
+  ansible.builtin.systemd_service:
+    name: caddy
+    state: restarted
+    daemon_reload: true

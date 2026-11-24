@@ -1,0 +1,10 @@
+---
+# On the old guest. Caddy keeps serving: certificates are only read, so the outage
+# is just the MAC swap. A renewal in the next few minutes would be redone by the new guest.
+- name: Export the certificates and ACME accounts
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: caddy
+    data_copy_path: "{{ caddy_data }}"

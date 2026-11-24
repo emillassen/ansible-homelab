@@ -76,3 +76,8 @@
   hosts: managed:&wireguard
   roles:
     - wireguard
+
+- name: Caddy
+  hosts: managed:&caddy
+  roles:
+    - caddy

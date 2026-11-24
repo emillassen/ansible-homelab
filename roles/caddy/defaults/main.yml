@@ -1,0 +1,27 @@
+---
+# The apt package gives the caddy user, the unit and /usr/bin/caddy (unused). The
+# binary that runs is built with xcaddy into /usr/local/bin/caddy, with the plugins below.
+# renovate: datasource=github-releases depName=caddyserver/caddy
+caddy_version: "v2.11.9"
+# DNS-01 challenges through Cloudflare (acme_dns).
+# renovate: datasource=github-tags depName=caddy-dns/cloudflare
+caddy_dns_cloudflare_version: "v0.2.4"
+# `trusted_proxies cloudflare`. The repo has no tags; this is its latest commit.
+caddy_cloudflare_ip_version: "f53b62aa13cb7ad79c8b47aacc3f2f03989b67e5"
+
+# renovate: datasource=github-releases depName=caddyserver/xcaddy
+caddy_xcaddy_version: "0.4.7"
+caddy_xcaddy_sha512: 99fd895a7b7799b18c43ea0915777d8701aaab2a010035b23495c28b4ae429edccd70adb9a01106180f8d9333d9b5df41e74f9702ce0e1cffcf8840698a9ab93
+# Caddy needs a newer Go than Debian 13 has. Update the checksum with the version
+# (https://go.dev/dl/?mode=json).
+# renovate: datasource=golang-version depName=go
+caddy_go_version: "1.26.11"
+caddy_go_sha256: 9849f4e04ee35303714e34fbc3ac8ab44ea3e448a95aa182f91e3b9b79c710ec
+
+caddy_build_dir: /opt/caddy-build
+caddy_bin: /usr/local/bin/caddy
+# Certificates, ACME accounts and OCSP staples. Copied by `run migrate`; Caddy stays
+# stopped until it's there, so it doesn't order every certificate again.
+caddy_data: /var/lib/caddy
+caddy_marker: "{{ caddy_data }}/.migrated"
+caddy_cloudflare_api_token: "{{ vault_caddy_cloudflare_api_token }}"

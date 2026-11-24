@@ -1,0 +1,234 @@
+---
+# The key is in the repo, so a rebuild doesn't trust whatever the server serves that day.
+# Fingerprint 65760C51EDEA2017CEA2CA15155B6D79CA56EA34 (signing key, no expiry).
+- name: Install the Caddy signing key
+  ansible.builtin.copy:
+    src: caddy-repo.gpg
+    dest: /etc/apt/keyrings/caddy.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Caddy repo
+  ansible.builtin.deb822_repository:
+    name: caddy-stable
+    types: deb
+    uris: https://dl.cloudsmith.io/public/caddy/stable/deb/debian
+    suites: any-version
+    components: main
+    signed_by: /etc/apt/keyrings/caddy.gpg
+  register: caddy_repo
+  # base installs python3-debian, which the module needs; a fresh guest under --check has none yet.
+  when: not ansible_check_mode or 'python3-debian' in ansible_facts.packages
+
+# policy_rc_d keeps the package from starting Caddy on its default config.
+- name: Install Caddy
+  ansible.builtin.apt:
+    name: caddy
+    update_cache: "{{ caddy_repo is changed }}"
+    policy_rc_d: 101
+    state: present
+  when: not ansible_check_mode or (caddy_repo is not skipped and caddy_repo is not changed)
+
+- name: Create the build directory
+  ansible.builtin.file:
+    path: "{{ caddy_build_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  register: caddy_build_dir_created
+
+- name: Create the Go and xcaddy directories
+  ansible.builtin.file:
+    path: "{{ caddy_build_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - go-{{ caddy_go_version }}
+    - xcaddy-{{ caddy_xcaddy_version }}
+  when: not ansible_check_mode or caddy_build_dir_created is not changed
+
+- name: Download Go {{ caddy_go_version }}
+  ansible.builtin.get_url:
+    url: https://go.dev/dl/go{{ caddy_go_version }}.linux-amd64.tar.gz
+    dest: "{{ caddy_build_dir }}/go-{{ caddy_go_version }}.tar.gz"
+    checksum: "sha256:{{ caddy_go_sha256 }}"
+    mode: "0644"
+  register: caddy_go_download
+  when: not ansible_check_mode or caddy_build_dir_created is not changed
+
+- name: Download xcaddy {{ caddy_xcaddy_version }}
+  ansible.builtin.get_url:
+    url: https://github.com/caddyserver/xcaddy/releases/download/v{{ caddy_xcaddy_version }}/xcaddy_{{ caddy_xcaddy_version }}_linux_amd64.tar.gz
+    dest: "{{ caddy_build_dir }}/xcaddy-{{ caddy_xcaddy_version }}.tar.gz"
+    checksum: "sha512:{{ caddy_xcaddy_sha512 }}"
+    mode: "0644"
+  register: caddy_xcaddy_download
+  when: not ansible_check_mode or caddy_build_dir_created is not changed
+
+- name: Unpack Go and xcaddy
+  ansible.builtin.unarchive:
+    src: "{{ caddy_build_dir }}/{{ item.name }}.tar.gz"
+    dest: "{{ caddy_build_dir }}/{{ item.name }}"
+    remote_src: true
+    extra_opts: "{{ item.opts }}"
+    creates: "{{ caddy_build_dir }}/{{ item.name }}/{{ item.creates }}"
+  loop:
+    - {name: "go-{{ caddy_go_version }}", opts: [--strip-components=1], creates: bin/go}
+    - {name: "xcaddy-{{ caddy_xcaddy_version }}", opts: [], creates: xcaddy}
+  loop_control:
+    label: "{{ item.name }}"
+  when: not ansible_check_mode
+
+- name: Find old Go and xcaddy versions
+  ansible.builtin.find:
+    paths: "{{ caddy_build_dir }}"
+    patterns: ["go-*", "xcaddy-*"]
+    file_type: any
+    excludes:
+      - go-{{ caddy_go_version }}
+      - go-{{ caddy_go_version }}.tar.gz
+      - xcaddy-{{ caddy_xcaddy_version }}
+      - xcaddy-{{ caddy_xcaddy_version }}.tar.gz
+  register: caddy_build_old
+  when: not ansible_check_mode or caddy_build_dir_created is not changed
+
+- name: Remove old Go and xcaddy versions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ caddy_build_old.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+# The spec is written after a successful build, so a Renovate bump, a revert or a
+# failed build builds again on the next run.
+- name: Read the spec of the installed build
+  ansible.builtin.slurp:
+    src: "{{ caddy_build_dir }}/build-spec"
+  register: caddy_spec_marker
+  failed_when: false
+
+- name: Decide whether to build
+  ansible.builtin.set_fact:
+    caddy_build: "{{ (caddy_spec_marker.content | default('') | b64decode) != lookup('ansible.builtin.template', 'build-spec.j2') }}"
+
+- name: Build Caddy {{ caddy_version }} with the plugins
+  ansible.builtin.command:
+    cmd: >-
+      {{ caddy_build_dir }}/xcaddy-{{ caddy_xcaddy_version }}/xcaddy build {{ caddy_version }}
+      --with github.com/caddy-dns/cloudflare@{{ caddy_dns_cloudflare_version }}
+      --with github.com/WeidiDeng/caddy-cloudflare-ip@{{ caddy_cloudflare_ip_version }}
+      --output {{ caddy_bin }}.new
+    chdir: "{{ caddy_build_dir }}"
+  environment:
+    PATH: "{{ caddy_build_dir }}/go-{{ caddy_go_version }}/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    GOTOOLCHAIN: local
+    GOPATH: "{{ caddy_build_dir }}/gopath"
+    GOCACHE: "{{ caddy_build_dir }}/gocache"
+    HOME: /root
+  changed_when: true
+  when:
+    - caddy_build
+    - not ansible_check_mode
+
+# The running Caddy keeps the old inode; the restart picks up the new binary.
+- name: Install the new binary
+  ansible.builtin.command:
+    cmd: mv {{ caddy_bin }}.new {{ caddy_bin }}
+  changed_when: true
+  when:
+    - caddy_build
+    - not ansible_check_mode
+  notify: Restart caddy
+
+# Gigabytes of module and build cache; the next build fetches them again.
+- name: Remove the build caches
+  ansible.builtin.file:
+    path: "{{ caddy_build_dir }}/{{ item }}"
+    state: absent
+  loop: [gopath, gocache]
+  when: caddy_build
+
+- name: Write the build spec
+  ansible.builtin.template:
+    src: build-spec.j2
+    dest: "{{ caddy_build_dir }}/build-spec"
+    owner: root
+    group: root
+    mode: "0644"
+  when: caddy_build
+
+- name: Install the Cloudflare origin pull CA
+  ansible.builtin.copy:
+    src: cloudflare-origin-pull-ca.pem
+    dest: /etc/caddy/cloudflare-origin-pull-ca.pem
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart caddy
+  when: not ansible_check_mode or 'caddy' in ansible_facts.packages
+
+- name: Write the Cloudflare token
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/caddy/.env
+    owner: root
+    group: caddy
+    mode: "0640"
+  no_log: true
+  notify: Restart caddy
+  when: not ansible_check_mode or 'caddy' in ansible_facts.packages
+
+- name: Create the log directory
+  ansible.builtin.file:
+    path: /var/log/caddy
+    state: directory
+    owner: caddy
+    group: caddy
+    mode: "0755"
+  when: not ansible_check_mode or 'caddy' in ansible_facts.packages
+
+- name: Write the Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart caddy
+  when: not ansible_check_mode or 'caddy' in ansible_facts.packages
+
+- name: Create the unit override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/caddy.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Point the unit at the xcaddy build
+  ansible.builtin.template:
+    src: override.conf.j2
+    dest: /etc/systemd/system/caddy.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart caddy
+
+- name: Check for the migrated data
+  ansible.builtin.stat:
+    path: "{{ caddy_marker }}"
+  register: caddy_migrated
+
+- name: Run Caddy once its certificates are here
+  ansible.builtin.systemd_service:
+    name: caddy
+    state: "{{ 'started' if caddy_migrated.stat.exists else 'stopped' }}"
+    enabled: "{{ caddy_migrated.stat.exists }}"
+    daemon_reload: true
+  register: caddy_service
+  when: not ansible_check_mode or 'caddy' in ansible_facts.packages

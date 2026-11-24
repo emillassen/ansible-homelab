@@ -1,0 +1,164 @@
+# Managed by Ansible (roles/caddy/templates/Caddyfile.j2).
+{
+	admin off
+	email admin@hjem.sh
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	servers {
+		trusted_proxies cloudflare {
+			interval 12h
+			timeout 15s
+		}
+		trusted_proxies_strict
+	}
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100MiB
+			roll_keep 10
+			roll_keep_for 2160h
+		}
+	}
+}
+
+(cloudflare_mtls) {
+	tls {
+		client_auth {
+			mode require_and_verify
+			trust_pool file {
+				pem_file /etc/caddy/cloudflare-origin-pull-ca.pem
+			}
+		}
+	}
+}
+
+adguard.hjem.sh {
+	reverse_proxy 192.168.1.101:80
+}
+
+audiobookshelf.hjem.sh {
+	reverse_proxy 192.168.1.116:13378
+}
+
+bentopdf.hjem.sh {
+	reverse_proxy https://192.168.1.113:8443 {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+}
+
+changedetection.hjem.sh {
+	reverse_proxy 192.168.1.112:5000
+}
+
+esphome.hjem.sh {
+	reverse_proxy 192.168.1.107:6052
+}
+
+grafana.hjem.sh {
+	reverse_proxy 192.168.1.118:3000
+}
+
+ha.hjem.sh {
+	reverse_proxy 192.168.1.104:8123
+}
+
+hermes.hjem.sh {
+	@allowed remote_ip 192.168.1.102 192.168.1.42 192.168.1.151
+	handle @allowed {
+		handle_path /gateway/* {
+			reverse_proxy 192.168.1.225:8642
+		}
+		handle {
+			reverse_proxy 192.168.1.225:9119
+		}
+	}
+}
+
+hjem.sh, homepage.hjem.sh {
+	reverse_proxy 192.168.1.108:3000
+}
+
+immich.hjem.sh {
+	reverse_proxy 192.168.1.111:2283
+	# Unlimited uploads
+	request_body {
+		max_size 0
+	}
+}
+
+jellyfin.hjem.sh {
+	reverse_proxy 192.168.1.115:8096 {
+		flush_interval -1
+	}
+}
+
+linkding.hjem.sh {
+	reverse_proxy 192.168.1.114:9090
+}
+
+loki.hjem.sh {
+	reverse_proxy 192.168.1.118:3100
+}
+
+meshmonitor.hjem.sh {
+	reverse_proxy 192.168.1.201:8080
+}
+
+miniflux.hjem.sh {
+	reverse_proxy 192.168.1.114:80
+}
+
+myspeed.hjem.sh {
+	reverse_proxy 192.168.1.110:5216
+}
+
+nextcloud.indud.io {
+	import cloudflare_mtls
+	reverse_proxy 192.168.1.121:11000 {
+		transport http {
+			read_timeout 86400s
+		}
+		# Cloudflare's real client IP (CF-Connecting-IP) as X-Forwarded-For.
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+	}
+	# Unlimited upload size
+	request_body {
+		max_size 0
+	}
+}
+
+paperless.hjem.sh {
+	reverse_proxy 192.168.1.119:8000
+}
+
+pdf.hjem.sh {
+	reverse_proxy 192.168.1.113:8080
+}
+
+pve.hjem.sh {
+	reverse_proxy 192.168.1.100:8006 {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+}
+
+smokeping.hjem.sh {
+	# The CGI isn't at /. Redirecting here keeps it on https; Apache's own redirect
+	# behind the proxy answers with an http:// Location.
+	redir / /smokeping/smokeping.cgi
+	reverse_proxy 192.168.1.109:80
+}
+
+uptime.hjem.sh {
+	# Remember to Settings → Reverse Proxy → HTTP Headers and set Trust Proxy to Yes.
+	reverse_proxy 192.168.1.117:3001
+}
+
+wgd.hjem.sh {
+	reverse_proxy 192.168.1.102:10086
+}
+
+z2m.hjem.sh {
+	reverse_proxy 192.168.1.106:8081
+}

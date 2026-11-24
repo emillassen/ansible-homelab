@@ -1,0 +1,7 @@
+# Managed by Ansible. Runs the xcaddy build. No --environ: it would log the token.
+# `admin off` in the Caddyfile means `caddy reload` can't work, so there's no reload.
+[Service]
+EnvironmentFile=/etc/caddy/.env
+ExecStart=
+ExecStart={{ caddy_bin }} run --config /etc/caddy/Caddyfile
+ExecReload=
