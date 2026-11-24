@@ -11,3 +11,10 @@
     data_copy_group: caddy
     data_copy_clean: true
     data_copy_service: caddy
+
+# dir_import starts it; enabling it here too keeps the next apply's restart from
+# being skipped as "just started".
+- name: Enable caddy at boot
+  ansible.builtin.systemd_service:
+    name: caddy
+    enabled: true

@@ -1,0 +1,26 @@
+---
+# On the old guest. AdGuard is stopped only while the small files are packed (the
+# stats and sessions are bbolt databases, not safe to copy while open), then
+# started again, even if the export fails: DNS is down for seconds, and the old
+# guest serves until the MAC swap. querylog.json (90 days, gigabytes) isn't
+# copied; the filter lists are fetched again.
+- name: Export the config and stats
+  block:
+    - name: Stop AdGuard Home on the old guest
+      ansible.builtin.service:
+        name: AdGuardHome
+        state: stopped
+
+    - name: Pack and fetch
+      ansible.builtin.include_role:
+        name: data_copy
+        tasks_from: dir_export
+      vars:
+        data_copy_name: adguard
+        data_copy_path: "{{ adguard_legacy_dir }}"
+        data_copy_include: [AdGuardHome.yaml, data/stats.db, data/sessions.db]
+  always:
+    - name: Start AdGuard Home on the old guest again
+      ansible.builtin.service:
+        name: AdGuardHome
+        state: started

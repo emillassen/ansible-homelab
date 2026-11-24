@@ -81,3 +81,8 @@
   hosts: managed:&caddy
   roles:
     - caddy
+
+- name: AdGuard Home
+  hosts: managed:&adguard
+  roles:
+    - adguard

@@ -1,0 +1,20 @@
+---
+# The marker this writes is what lets the main role start AdGuard Home.
+- name: Import the config and stats
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: adguard
+    data_copy_path: "{{ adguard_data }}"
+    data_copy_owner: adguardhome
+    data_copy_group: adguardhome
+    data_copy_clean: true
+    data_copy_service: adguardhome
+
+# dir_import starts it; enabling it here too keeps the next apply's restart from
+# being skipped as "just started".
+- name: Enable adguardhome at boot
+  ansible.builtin.systemd_service:
+    name: adguardhome
+    enabled: true

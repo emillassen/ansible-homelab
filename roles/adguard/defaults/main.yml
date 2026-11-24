@@ -1,0 +1,13 @@
+---
+# A Renovate bump has to update the checksum too, from the release's checksums.txt.
+# renovate: datasource=github-releases depName=AdguardTeam/AdGuardHome
+adguard_version: "v1.0.0"
+adguard_sha256: 19e023d98eb42eb1cdbfd6e4b6ebc937dade59e969506c62eafb3a3d6d2c1e4f
+adguard_dir: /opt/AdGuardHome
+adguard_dist: /opt/AdGuardHome-dist
+# AdGuardHome.yaml (settings, users, filters) and data/ (stats, sessions; the filter
+# lists are downloaded again). The web UI writes the yaml, so it isn't templated.
+adguard_data: /var/lib/adguardhome
+adguard_marker: "{{ adguard_data }}/.migrated"
+# Where the old community-scripts guest keeps it all.
+adguard_legacy_dir: /opt/AdGuardHome

@@ -1,0 +1,25 @@
+# Managed by Ansible.
+[Unit]
+Description=AdGuard Home
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=adguardhome
+Group=adguardhome
+WorkingDirectory={{ adguard_data }}
+# No self-update: the version comes from the role.
+ExecStart={{ adguard_dir }}/AdGuardHome --no-check-update -c {{ adguard_data }}/AdGuardHome.yaml -w {{ adguard_data }}
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ adguard_data }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+---
+- name: Restart adguardhome
+  ansible.builtin.systemd_service:
+    name: adguardhome
+    state: restarted
+    daemon_reload: true
+  # Not before the data is here, and not when this run has just started it.
+  when: adguard_migrated.stat.exists and adguard_service is not changed
