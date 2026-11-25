@@ -1,0 +1,44 @@
+---
+# On the old VM. Stored device keys and passwords are sealed with the session secret,
+# so the new VM needs the same one. The old VM has it in the compose file; a rebuilt
+# one in .env. Read before stopping anything, so a missing secret costs no outage.
+- name: Read the session secret
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      { cat docker-compose.yml; if [ -f .env ]; then cat .env; fi; }
+      | sed -nE 's/^[[:space:]-]*SESSION_SECRET=["]?([^"[:space:]]+)["]?[[:space:]]*$/\1/p'
+      | head -n 1
+    chdir: "{{ meshmonitor_project }}"
+    executable: /bin/bash
+  register: meshmonitor_secret_read
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Check that a session secret was found
+  ansible.builtin.assert:
+    that: meshmonitor_secret_read.stdout | length >= 32
+    fail_msg: No SESSION_SECRET in {{ meshmonitor_project }}/docker-compose.yml or .env
+  no_log: true
+
+- name: Keep the session secret for the import
+  ansible.builtin.set_fact:
+    meshmonitor_session_secret: "{{ meshmonitor_secret_read.stdout }}"
+  no_log: true
+
+# Stopping MeshMonitor starts its outage. meshmonitor.db is SQLite (with a WAL),
+# so it's copied with MeshMonitor stopped.
+- name: Stop MeshMonitor on the old VM
+  ansible.builtin.command:
+    cmd: docker compose stop
+    chdir: "{{ meshmonitor_project }}"
+  changed_when: true
+
+- name: Export data/
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: meshmonitor
+    data_copy_path: "{{ meshmonitor_export_data }}"

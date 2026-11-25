@@ -1,0 +1,21 @@
+# Managed by Ansible (roles/meshmonitor).
+services:
+  meshmonitor:
+    container_name: meshmonitor
+    hostname: meshmonitor
+    image: ghcr.io/yeraze/meshmonitor:{{ meshmonitor_version }}
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8080:3001"
+    devices:
+      - {{ meshmonitor_device }}:/dev/ttyACM0
+    volumes:
+      - ./data:/data
+    # SESSION_SECRET, copied from the old VM by `run migrate`.
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - TRUST_PROXY=true
+      - COOKIE_SECURE=true
+      - ALLOWED_ORIGINS=https://meshmonitor.hjem.sh
+      - TZ=Europe/Copenhagen

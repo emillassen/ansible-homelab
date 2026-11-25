@@ -1,0 +1,22 @@
+---
+# Written before the data, whose marker ends the import.
+- name: Write the session secret
+  ansible.builtin.copy:
+    content: "SESSION_SECRET={{ hostvars[legacy_host].meshmonitor_session_secret }}\n"
+    dest: "{{ meshmonitor_project }}/.env"
+    owner: emil
+    group: emil
+    mode: "0600"
+  no_log: true
+
+# Doesn't start MeshMonitor: the USB device is still on the old VM until cutover.
+- name: Import data/
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: meshmonitor
+    data_copy_path: "{{ meshmonitor_project }}/data"
+    data_copy_owner: "{{ meshmonitor_uid }}"
+    data_copy_group: "{{ meshmonitor_uid }}"
+    data_copy_clean: true

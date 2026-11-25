@@ -102,3 +102,8 @@
   roles:
     - loki
     - grafana
+
+- name: MeshMonitor
+  hosts: managed:&meshmonitor
+  roles:
+    - meshmonitor

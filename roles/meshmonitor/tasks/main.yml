@@ -1,0 +1,52 @@
+---
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ meshmonitor_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ meshmonitor_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: meshmonitor_compose
+
+- name: Check for the migrated data
+  ansible.builtin.stat:
+    path: "{{ meshmonitor_marker }}"
+  register: meshmonitor_migrated
+
+- name: Check for the USB companion
+  ansible.builtin.stat:
+    path: "{{ meshmonitor_device }}"
+  register: meshmonitor_usb
+
+# The USB device moves from the old VM at cutover, so it is only expected in production.
+- name: Ask for the USB passthrough
+  ansible.builtin.fail:
+    msg: >-
+      {{ meshmonitor_device }} is missing. On the Proxmox host, with the old VM stopped:
+      qm set {{ vmid }} -usb0 host=2886:8044
+  when:
+    - net_production
+    - meshmonitor_migrated.stat.exists
+    - not meshmonitor_usb.stat.exists
+    - not ansible_check_mode
+
+# Without the copied data it would start empty with admin/changeme, and a new
+# session secret would lock out the keys sealed with the old one.
+- name: Run MeshMonitor once its data and the USB device are here
+  community.docker.docker_compose_v2:
+    project_src: "{{ meshmonitor_project }}"
+    pull: missing
+    state: present
+  when:
+    - net_production
+    - meshmonitor_migrated.stat.exists
+    - meshmonitor_usb.stat.exists
+    - not ansible_check_mode or (docker_present and meshmonitor_compose is not changed)
