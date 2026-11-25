@@ -1,7 +1,7 @@
 ---
 # metadata/ first: config/.migrated is the marker that lets Audiobookshelf start.
 # Doesn't start it: the NFS shares only mount on the production address.
-- name: Import {{ audiobookshelf_dir }}/
+- name: Import metadata/ and config/
   ansible.builtin.include_role:
     name: data_copy
     tasks_from: dir_import

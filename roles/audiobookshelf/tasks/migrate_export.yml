@@ -7,7 +7,7 @@
     chdir: "{{ audiobookshelf_project }}"
   changed_when: true
 
-- name: Export {{ audiobookshelf_dir }}/
+- name: Export config/ and metadata/
   ansible.builtin.include_role:
     name: data_copy
     tasks_from: dir_export
