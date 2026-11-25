@@ -9,9 +9,9 @@ mac_production: "BC:24:11:32:F1:0B"
 ip_production: 192.168.1.119
 ip_static: false
 startup: ""
-net_production: false
+net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
-ansible_host: 192.168.1.123
+ansible_host: 192.168.1.119
 # PAPERLESS_TRUSTED_PROXIES trusts X-Forwarded-For, so only Caddy may reach the UI.
 docker_user_filter:
   - {port: 8000, allow: 192.168.1.88}
