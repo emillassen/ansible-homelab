@@ -128,3 +128,8 @@
   hosts: managed:&immich
   roles:
     - immich
+
+- name: Nextcloud
+  hosts: managed:&nextcloud
+  roles:
+    - nextcloud

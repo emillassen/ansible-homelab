@@ -48,8 +48,11 @@
   ansible.builtin.unarchive:
     src: "{{ data_copy_staging }}/{{ data_copy_name }}.tar.gz"
     dest: "{{ data_copy_path }}"
-    owner: "{{ data_copy_owner }}"
-    group: "{{ data_copy_group }}"
+    owner: "{{ omit if data_copy_keep_owners else data_copy_owner }}"
+    group: "{{ omit if data_copy_keep_owners else data_copy_group }}"
+    # As root, tar restores the archived owners and modes; numeric, so a uid that
+    # has another name here (postgres in a container) stays the same uid.
+    extra_opts: "{{ ['--numeric-owner'] if data_copy_keep_owners else [] }}"
   when: not ansible_check_mode
 
 # tar creates parent directories it has no entry for (data_copy_include: [data/x])
@@ -61,7 +64,9 @@
     recurse: true
     owner: "{{ data_copy_owner }}"
     group: "{{ data_copy_group }}"
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - not data_copy_keep_owners
 
 - name: Mark the import done
   ansible.builtin.copy:

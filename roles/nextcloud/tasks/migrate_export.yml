@@ -1,0 +1,74 @@
+---
+# On the old VM. Stopping AIO's containers starts the outage. AIO stops them in order;
+# its database container writes database-dump.sql as it stops. The mastercontainer is
+# stopped last, so nothing starts them again.
+- name: Check whether the mastercontainer is running
+  ansible.builtin.command:
+    cmd: docker ps --quiet --filter name=^nextcloud-aio-mastercontainer$
+  register: nextcloud_master_running
+  changed_when: false
+  check_mode: false
+
+# Skipped on a second run after a failed export: everything is stopped already.
+- name: Stop AIO's containers on the old VM
+  ansible.builtin.command:
+    cmd: docker exec --env STOP_CONTAINERS=1 nextcloud-aio-mastercontainer /daily-backup.sh
+  changed_when: true
+  when: nextcloud_master_running.stdout != ""
+
+- name: Stop the mastercontainer on the old VM
+  ansible.builtin.command:
+    cmd: docker stop nextcloud-aio-mastercontainer
+  changed_when: true
+  when: nextcloud_master_running.stdout != ""
+
+- name: Check the old VM and export
+  when: not ansible_check_mode
+  block:
+    - name: List the AIO containers still running
+      ansible.builtin.command:
+        cmd: docker ps --filter name=^nextcloud-aio- --format '{{ "{{" }}.Names{{ "}}" }}'
+      register: nextcloud_running
+      changed_when: false
+
+    - name: Check that every AIO container is stopped
+      ansible.builtin.assert:
+        that: nextcloud_running.stdout_lines | length == 0
+        fail_msg: "Still running on {{ inventory_hostname }}: {{ nextcloud_running.stdout_lines | join(', ') }}"
+
+    # The dump is written when the database stops, so it must be newer than its last start.
+    - name: Read when the database last started
+      ansible.builtin.shell:
+        cmd: set -o pipefail; date -d "$(docker container inspect --format '{{ "{{" }}.State.StartedAt{{ "}}" }}' nextcloud-aio-database)" +%s
+        executable: /bin/bash
+      register: nextcloud_db_started
+      changed_when: false
+
+    - name: Read the database dump
+      ansible.builtin.stat:
+        path: "{{ nextcloud_volume_root }}/nextcloud_aio_database_dump/_data/{{ nextcloud_dump_file }}"
+      loop: [database-dump.sql, export.failed]
+      loop_control:
+        loop_var: nextcloud_dump_file
+      register: nextcloud_dump
+
+    - name: Check that the database dump was written as the database stopped
+      ansible.builtin.assert:
+        that:
+          - nextcloud_dump.results[0].stat.exists
+          - nextcloud_dump.results[0].stat.size > 0
+          - nextcloud_dump.results[0].stat.mtime >= nextcloud_db_started.stdout | int
+          - not nextcloud_dump.results[1].stat.exists
+        fail_msg: >-
+          AIO's database dump on {{ inventory_hostname }} is missing, older than the
+          database's last start, or failed (export.failed). See docker logs nextcloud-aio-database.
+
+    - name: Export the volumes
+      ansible.builtin.include_role:
+        name: data_copy
+        tasks_from: dir_export
+      vars:
+        data_copy_name: nextcloud
+        data_copy_path: "{{ nextcloud_volume_root }}"
+        data_copy_include: "{{ nextcloud_volumes | map('regex_replace', '$', '/_data') | list }}"
+        data_copy_keep_owners: true

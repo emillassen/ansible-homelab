@@ -1,0 +1,107 @@
+---
+- name: Check for an earlier migration
+  ansible.builtin.stat:
+    path: "{{ nextcloud_marker }}"
+  register: nextcloud_restored
+
+- name: Refuse to migrate over migrated volumes
+  ansible.builtin.assert:
+    that: not nextcloud_restored.stat.exists
+    fail_msg: >-
+      Already migrated. To migrate again, reset AIO on {{ inventory_hostname }} first
+      (AIO's "How to properly reset the instance", leaving the NFS data directory alone),
+      then delete {{ nextcloud_marker }}.
+
+# A mastercontainer made by `docker compose create` in a failed import has never run.
+# Anything else means AIO has started here: its volumes would be replaced under it, and
+# an existing database volume would keep its database instead of restoring the dump.
+- name: List the AIO containers and the database volume here
+  ansible.builtin.shell:
+    cmd: >-
+      set -e;
+      containers=$(docker ps --all --filter name=^nextcloud-aio- --format '{{ "{{" }}.Names{{ "}}" }} {{ "{{" }}.State{{ "}}" }}');
+      volume=$(docker volume ls --quiet --filter name=^nextcloud_aio_database$);
+      printf '%s\n%s\n' "$containers" "$volume" | grep -vx -e 'nextcloud-aio-mastercontainer created' -e '' || true
+    executable: /bin/bash
+  register: nextcloud_existing
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to migrate onto an AIO that has started
+  ansible.builtin.assert:
+    that: nextcloud_existing.stdout_lines | length == 0
+    fail_msg: "AIO has run on {{ inventory_hostname }}: {{ nextcloud_existing.stdout_lines | join(', ') }}. Reset it first."
+
+- name: Delete volumes left by a failed migration
+  ansible.builtin.file:
+    path: "{{ nextcloud_restore_dir }}"
+    state: absent
+
+- name: Import the volumes
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: nextcloud
+    data_copy_path: "{{ nextcloud_restore_dir }}"
+    data_copy_keep_owners: true
+
+# AIO hasn't run here (checked above), so the volumes are new and empty. `docker compose create` makes the mastercontainer's volume with compose's
+# labels; the mastercontainer made the others with plain names.
+# Doesn't start AIO: the data directory only mounts on the production address.
+- name: Put the volumes in place
+  when: not ansible_check_mode
+  block:
+    - name: Create the mastercontainer and its volume
+      ansible.builtin.command:
+        cmd: docker compose create
+        chdir: "{{ nextcloud_project }}"
+      changed_when: true
+
+    - name: Create the other volumes
+      community.docker.docker_volume:
+        name: "{{ nextcloud_volume }}"
+      loop: "{{ nextcloud_volumes | reject('equalto', 'nextcloud_aio_mastercontainer') | list }}"
+      loop_control:
+        loop_var: nextcloud_volume
+
+    - name: Move the copied data into each volume
+      ansible.builtin.shell:
+        cmd: >-
+          set -e;
+          src={{ (nextcloud_restore_dir ~ '/' ~ nextcloud_volume ~ '/_data') | quote }};
+          dest={{ (nextcloud_volume_root ~ '/' ~ nextcloud_volume ~ '/_data') | quote }};
+          test -d "$src";
+          rm -rf "$dest";
+          mv "$src" "$dest"
+        executable: /bin/bash
+      loop: "{{ nextcloud_volumes }}"
+      loop_control:
+        loop_var: nextcloud_volume
+      changed_when: true
+
+    - name: Read the mastercontainer's configuration and the database dump
+      ansible.builtin.stat:
+        path: "{{ nextcloud_volume_root }}/{{ nextcloud_file }}"
+      loop:
+        - nextcloud_aio_mastercontainer/_data/data/configuration.json
+        - nextcloud_aio_database_dump/_data/database-dump.sql
+      loop_control:
+        loop_var: nextcloud_file
+      register: nextcloud_files
+
+    - name: Check that both arrived
+      ansible.builtin.assert:
+        that: nextcloud_files.results | map(attribute='stat.size', default=0) | min > 0
+        fail_msg: "configuration.json or database-dump.sql is missing or empty after the move"
+
+    - name: Mark the migration done
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ nextcloud_marker }}"
+        mode: "0644"
+
+    - name: Delete the import directory
+      ansible.builtin.file:
+        path: "{{ nextcloud_restore_dir }}"
+        state: absent

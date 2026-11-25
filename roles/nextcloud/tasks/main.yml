@@ -1,0 +1,90 @@
+---
+- name: Mount the data share
+  ansible.builtin.include_role:
+    name: nfs_automount
+  vars:
+    nfs_automount_shares: "{{ nextcloud_nfs }}"
+
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ nextcloud_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ nextcloud_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: nextcloud_compose
+
+- name: Install the update script
+  ansible.builtin.copy:
+    src: automatic-updates.sh
+    dest: /root/automatic-updates.sh
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Check for the migrated volumes
+  ansible.builtin.stat:
+    path: "{{ nextcloud_marker }}"
+  register: nextcloud_migrated
+
+# Without the copied volumes the mastercontainer would offer a new install; without
+# the share AIO would find the data directory missing.
+- name: Run the mastercontainer once the volumes are here and the share is mounted
+  community.docker.docker_compose_v2:
+    project_src: "{{ nextcloud_project }}"
+    pull: missing
+    state: present
+    wait: true
+    wait_timeout: 300
+  register: nextcloud_master
+  when:
+    - net_production
+    - nextcloud_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and nextcloud_compose is not changed)
+
+# The mastercontainer creates and starts the other containers when told to, Apache last.
+# Once they run, their restart policy brings them back; this also retries a first start
+# that didn't finish. Not while AIO's own update runs (it stops Apache on purpose, and
+# a second daily-backup.sh would stop and start containers under it).
+- name: Check whether AIO's Apache is running or AIO is updating
+  ansible.builtin.shell:
+    cmd: >-
+      set -e;
+      if [ -n "$(docker ps --quiet --filter name=^nextcloud-aio-apache$ --filter status=running)" ]; then echo running;
+      elif pgrep --full '[a]utomatic-updates[.]sh' > /dev/null
+      || [ -e {{ nextcloud_volume_root }}/nextcloud_aio_mastercontainer/_data/data/daily_backup_running ]
+      || [ -n "$(docker ps --quiet --filter name=^nextcloud-aio-watchtower$)" ]; then echo updating;
+      else echo stopped; fi
+    executable: /bin/bash
+  register: nextcloud_apache
+  changed_when: false
+  check_mode: false
+  when: nextcloud_master is not skipped
+
+- name: Start AIO's containers
+  ansible.builtin.command:
+    cmd: docker exec --env START_CONTAINERS=1 nextcloud-aio-mastercontainer /daily-backup.sh
+  changed_when: true
+  when:
+    - nextcloud_master is not skipped
+    - nextcloud_apache.stdout == "stopped"
+
+# Before the migration the script would wait for a mastercontainer that never starts.
+- name: Update AIO and its containers at 05:00
+  ansible.builtin.cron:
+    name: Nextcloud AIO automatic updates
+    user: root
+    minute: "0"
+    hour: "5"
+    job: /root/automatic-updates.sh
+  when:
+    - net_production
+    - nextcloud_migrated.stat.exists

@@ -36,6 +36,7 @@
       ansible.builtin.command:
         cmd: >-
           tar -C {{ data_copy_path }}
+          {% if data_copy_keep_owners %}--numeric-owner {% endif %}
           {% for e in data_copy_exclude %}--exclude=./{{ e | quote }} {% endfor %}
           -czf {{ data_copy_archive }}
           {% for i in data_copy_include %}{{ ('./' ~ i) | regex_replace('^\\./\\.$', '.') | quote }} {% endfor %}
