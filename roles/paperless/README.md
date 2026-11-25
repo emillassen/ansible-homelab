@@ -8,11 +8,7 @@ The 2026 rebuild started empty (the old VM had no documents), so there is no `ru
 
 ## By hand, once
 
-Create the admin account:
-
-```sh
-cd ~/paperless && sudo docker compose exec webserver python3 manage.py createsuperuser
-```
+Register at `paperless.hjem.sh`: on an install with no users, the first sign-up becomes the superuser, and sign-up closes after it (`PAPERLESS_ACCOUNT_ALLOW_SIGNUPS` stays at its default, off).
 
 ## Resources
 

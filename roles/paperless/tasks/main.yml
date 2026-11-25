@@ -34,7 +34,7 @@
     mode: "0644"
   register: paperless_compose
 
-# A fresh install: nothing is copied from the old VM. The admin account is made by hand (README).
+# A fresh install: nothing is copied from the old VM. The first sign-up becomes the admin (README).
 - name: Run Paperless
   community.docker.docker_compose_v2:
     project_src: "{{ paperless_project }}"
