@@ -50,6 +50,18 @@
     - nextcloud_migrated.stat.exists
     - not ansible_check_mode or (docker_present and nextcloud_compose is not changed)
 
+# AIO creates its network as it connects the mastercontainer from the UI. Started from
+# the command line on a new host, its containers fail with "network nextcloud-aio not
+# found". Made here as AIO makes it (a plain bridge) and joined as AIO joins it.
+- name: Create AIO's network and connect the mastercontainer
+  community.docker.docker_network:
+    name: nextcloud-aio
+    driver: bridge
+    internal: false
+    connected: [nextcloud-aio-mastercontainer]
+    appends: true
+  when: nextcloud_master is not skipped
+
 # The mastercontainer creates and starts the other containers when told to, Apache last.
 # Once they run, their restart policy brings them back; this also retries a first start
 # that didn't finish. Not while AIO's own update runs (it stops Apache on purpose, and
