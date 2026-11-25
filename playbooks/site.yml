@@ -113,3 +113,8 @@
   roles:
     - miniflux
     - linkding
+
+- name: Audiobookshelf
+  hosts: managed:&audiobookshelf
+  roles:
+    - audiobookshelf

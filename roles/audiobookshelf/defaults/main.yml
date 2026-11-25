@@ -1,0 +1,14 @@
+---
+# The data is copied, so this can't be older than the version that last wrote it.
+# renovate: datasource=docker depName=ghcr.io/advplyr/audiobookshelf
+audiobookshelf_version: "2.38.0"
+audiobookshelf_project: /home/emil/audiobookshelf
+# Audiobookshelf stays stopped until `run migrate` has copied config/ and metadata/.
+audiobookshelf_marker: "{{ audiobookshelf_project }}/config/.migrated"
+# The books share on Holocron. Its NFS rule matches the production address only.
+audiobookshelf_nfs:
+  - {src: "192.168.1.30:/mnt/user/books/Audiobooks", path: /mnt/audiobooks}
+  - {src: "192.168.1.30:/mnt/user/books/Podcasts", path: /mnt/podcasts}
+# hard (the default, no `soft`): a soft mount can return I/O errors that corrupt
+# uploads and embedded metadata, or make a scan flag media as missing.
+audiobookshelf_nfs_opts: _netdev,auto,nofail,x-systemd.automount,x-systemd.mount-timeout=10,timeo=14,x-systemd.idle-timeout=1min

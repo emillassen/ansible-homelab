@@ -1,0 +1,69 @@
+---
+# In fstab only; systemd makes an automount of each, started below, and creates the
+# mount points. (Managing them here would chmod Holocron's share roots once mounted.)
+- name: Add the NFS shares to fstab
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: nfs
+    opts: "{{ audiobookshelf_nfs_opts }}"
+    state: present
+  loop: "{{ audiobookshelf_nfs }}"
+  notify: Reload systemd for the NFS mounts
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+# Holocron only exports to the production address.
+- name: Start the automounts
+  ansible.builtin.systemd_service:
+    name: "{{ item.path | regex_replace('^/', '') | replace('/', '-') }}.automount"
+    state: started
+  loop: "{{ audiobookshelf_nfs }}"
+  when: net_production and not ansible_check_mode
+
+# Fails here rather than letting Audiobookshelf scan an empty library.
+# Listing the directory triggers the automount; until then findmnt sees only autofs.
+# A hard mount on a dead server blocks forever, hence the timeout.
+- name: Check that the shares mount
+  ansible.builtin.shell:
+    cmd: >-
+      timeout 30 ls {{ item.path | quote }} > /dev/null &&
+      test "$(findmnt --mountpoint {{ item.path | quote }} --types nfs,nfs4 --noheadings --output SOURCE)" = {{ item.src | quote }}
+  changed_when: false
+  loop: "{{ audiobookshelf_nfs }}"
+  when: net_production and not ansible_check_mode
+
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ audiobookshelf_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ audiobookshelf_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: audiobookshelf_compose
+
+- name: Check for the migrated data
+  ansible.builtin.stat:
+    path: "{{ audiobookshelf_marker }}"
+  register: audiobookshelf_migrated
+
+# Without the copied data it would start a new, empty Audiobookshelf; without the
+# shares it would see every book as missing.
+- name: Run Audiobookshelf once its data and the shares are here
+  community.docker.docker_compose_v2:
+    project_src: "{{ audiobookshelf_project }}"
+    pull: missing
+    state: present
+  when:
+    - net_production
+    - audiobookshelf_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and audiobookshelf_compose is not changed)
