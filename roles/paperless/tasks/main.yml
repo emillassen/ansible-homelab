@@ -1,0 +1,43 @@
+---
+- name: Create the project directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+  loop:
+    - "{{ paperless_project }}"
+    - "{{ paperless_project }}/consume"
+    - "{{ paperless_project }}/export"
+
+# Only the containers use them, so they're made here, never copied or vaulted.
+# Postgres reads the password once, when it creates the database.
+- name: Generate the database password and secret key
+  ansible.builtin.copy:
+    content: |
+      PAPERLESS_DB_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}
+      PAPERLESS_SECRET_KEY={{ lookup('ansible.builtin.password', '/dev/null', length=64, chars=['ascii_letters', 'digits']) }}
+    dest: "{{ paperless_project }}/.env"
+    owner: emil
+    group: emil
+    mode: "0600"
+    force: false
+  no_log: true
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ paperless_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: paperless_compose
+
+# A fresh install: nothing is copied from the old VM. The admin account is made by hand (README).
+- name: Run Paperless
+  community.docker.docker_compose_v2:
+    project_src: "{{ paperless_project }}"
+    pull: missing
+    state: present
+  when: not ansible_check_mode or (docker_present and paperless_compose is not changed)

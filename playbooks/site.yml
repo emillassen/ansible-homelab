@@ -118,3 +118,8 @@
   hosts: managed:&audiobookshelf
   roles:
     - audiobookshelf
+
+- name: Paperless
+  hosts: managed:&paperless
+  roles:
+    - paperless
