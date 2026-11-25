@@ -9,6 +9,3 @@ audiobookshelf_marker: "{{ audiobookshelf_project }}/config/.migrated"
 audiobookshelf_nfs:
   - {src: "192.168.1.30:/mnt/user/books/Audiobooks", path: /mnt/audiobooks}
   - {src: "192.168.1.30:/mnt/user/books/Podcasts", path: /mnt/podcasts}
-# hard (the default, no `soft`): a soft mount can return I/O errors that corrupt
-# uploads and embedded metadata, or make a scan flag media as missing.
-audiobookshelf_nfs_opts: _netdev,auto,nofail,x-systemd.automount,x-systemd.mount-timeout=10,timeo=14,x-systemd.idle-timeout=1min

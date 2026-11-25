@@ -1,38 +1,9 @@
 ---
-# In fstab only; systemd makes an automount of each, started below, and creates the
-# mount points. (Managing them here would chmod Holocron's share roots once mounted.)
-- name: Add the NFS shares to fstab
-  ansible.posix.mount:
-    src: "{{ item.src }}"
-    path: "{{ item.path }}"
-    fstype: nfs
-    opts: "{{ audiobookshelf_nfs_opts }}"
-    state: present
-  loop: "{{ audiobookshelf_nfs }}"
-  notify: Reload systemd for the NFS mounts
-
-- name: Flush handlers
-  ansible.builtin.meta: flush_handlers
-
-# Holocron only exports to the production address.
-- name: Start the automounts
-  ansible.builtin.systemd_service:
-    name: "{{ item.path | regex_replace('^/', '') | replace('/', '-') }}.automount"
-    state: started
-  loop: "{{ audiobookshelf_nfs }}"
-  when: net_production and not ansible_check_mode
-
-# Fails here rather than letting Audiobookshelf scan an empty library.
-# Listing the directory triggers the automount; until then findmnt sees only autofs.
-# A hard mount on a dead server blocks forever, hence the timeout.
-- name: Check that the shares mount
-  ansible.builtin.shell:
-    cmd: >-
-      timeout 30 ls {{ item.path | quote }} > /dev/null &&
-      test "$(findmnt --mountpoint {{ item.path | quote }} --types nfs,nfs4 --noheadings --output SOURCE)" = {{ item.src | quote }}
-  changed_when: false
-  loop: "{{ audiobookshelf_nfs }}"
-  when: net_production and not ansible_check_mode
+- name: Mount the books shares
+  ansible.builtin.include_role:
+    name: nfs_automount
+  vars:
+    nfs_automount_shares: "{{ audiobookshelf_nfs }}"
 
 - name: Create the project directory
   ansible.builtin.file:

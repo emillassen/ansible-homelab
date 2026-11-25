@@ -123,3 +123,8 @@
   hosts: managed:&paperless
   roles:
     - paperless
+
+- name: Immich
+  hosts: managed:&immich
+  roles:
+    - immich

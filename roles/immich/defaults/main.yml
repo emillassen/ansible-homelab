@@ -1,0 +1,22 @@
+---
+# The database is restored from a dump, so Immich can't be older than the one that wrote it.
+# Server and machine learning share the version. Read the release notes before a bump.
+# renovate: datasource=docker depName=ghcr.io/immich-app/immich-server
+immich_version: "v3.4.2"
+# The database image Immich's own docker-compose.yml pins for the version above (Postgres
+# with VectorChord). Not bumped by Renovate: take it from that release's compose file.
+immich_postgres_image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+# renovate: datasource=docker depName=valkey/valkey
+immich_valkey_version: "9.2.0"
+immich_project: /home/emil/immich-app
+# The library (originals, thumbs, encoded video, Immich's own DB backups) on Holocron.
+# Its NFS rule matches the production address only.
+immich_upload: /mnt/proxmox-immich
+immich_nfs:
+  - {src: "192.168.1.30:/mnt/user/proxmox-immich", path: "{{ immich_upload }}"}
+# Written once the database is restored; the server stays stopped until then.
+immich_marker: "{{ immich_project }}/.migrated"
+# Where the dump lands on the new guest, for the restore.
+immich_restore_dir: "{{ immich_project }}/restore"
+# On the old guest, removed after each export.
+immich_dump_dir: /var/tmp/immich-dump
