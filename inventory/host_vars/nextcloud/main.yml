@@ -11,7 +11,7 @@ ip_static: false
 startup: ""
 net_production: false
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
-ansible_host: 192.168.1.121
+ansible_host: 192.168.1.71
 # AIO creates its own containers, so the daemon default would be the only way to set
 # their log driver; they log to json-file, as before.
 docker_loki_default: false
