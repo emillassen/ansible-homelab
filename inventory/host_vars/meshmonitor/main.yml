@@ -9,6 +9,6 @@ mac_production: "BC:24:11:5E:9F:AD"
 ip_production: 192.168.1.201
 ip_static: false
 startup: ""
-net_production: false
+net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
-ansible_host: 192.168.1.59
+ansible_host: 192.168.1.201
