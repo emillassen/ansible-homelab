@@ -1,0 +1,10 @@
+# Managed by Ansible (roles/linkding).
+services:
+  linkding:
+    container_name: linkding
+    image: sissbruecker/linkding:{{ linkding_version }}
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:9090:9090"
+    volumes:
+      - ./data:/etc/linkding/data

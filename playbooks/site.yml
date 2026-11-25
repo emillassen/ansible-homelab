@@ -107,3 +107,9 @@
   hosts: managed:&meshmonitor
   roles:
     - meshmonitor
+
+- name: Miniflux and Linkding
+  hosts: managed:&miniflux-linkding
+  roles:
+    - miniflux
+    - linkding

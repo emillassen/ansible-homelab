@@ -1,0 +1,17 @@
+---
+- name: Import data/
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: linkding
+    data_copy_path: "{{ linkding_project }}/data"
+    data_copy_owner: "{{ linkding_uid }}"
+    data_copy_group: "{{ linkding_uid }}"
+    data_copy_clean: true
+
+- name: Start Linkding
+  community.docker.docker_compose_v2:
+    project_src: "{{ linkding_project }}"
+    pull: missing
+    state: present

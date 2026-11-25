@@ -20,6 +20,12 @@
       "description": "Release tags with a v prefix; the pins in role defaults are bare versions",
       "matchPackageNames": ["gnmyt/myspeed", "alam00000/bentopdf", "gethomepage/homepage", "WGDashboard/WGDashboard"],
       "extractVersion": "^v(?<version>.+)$"
+    },
+    {
+      "description": "A Postgres major needs a dump and restore, so it waits for approval on the dependency dashboard",
+      "matchPackageNames": ["postgres"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
     }
   ]
 }

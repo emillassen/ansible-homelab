@@ -1,0 +1,50 @@
+---
+# On the old VM. Stopping Miniflux starts its outage; Postgres keeps running for the dump.
+- name: Stop Miniflux on the old VM
+  ansible.builtin.command:
+    cmd: docker compose stop miniflux
+    chdir: "{{ miniflux_project }}"
+  changed_when: true
+
+# Under --check nothing is dumped, so there is nothing to export; this at least shows
+# that the old database answers.
+- name: Check that the old database answers
+  ansible.builtin.command:
+    cmd: docker compose exec -T db pg_isready -U miniflux -d miniflux
+    chdir: "{{ miniflux_project }}"
+  changed_when: false
+  check_mode: false
+  when: ansible_check_mode
+
+- name: Dump and export the database
+  when: not ansible_check_mode
+  block:
+    - name: Create the dump directory
+      ansible.builtin.file:
+        path: "{{ miniflux_dump_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Dump the database
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          docker compose exec -T db pg_dump -U miniflux -d miniflux --format=custom
+          > {{ miniflux_dump_dir }}/miniflux.dump
+        chdir: "{{ miniflux_project }}"
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Export the dump
+      ansible.builtin.include_role:
+        name: data_copy
+        tasks_from: dir_export
+      vars:
+        data_copy_name: miniflux
+        data_copy_path: "{{ miniflux_dump_dir }}"
+
+  always:
+    - name: Delete the dump on the old VM
+      ansible.builtin.file:
+        path: "{{ miniflux_dump_dir }}"
+        state: absent

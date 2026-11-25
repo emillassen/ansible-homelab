@@ -1,0 +1,14 @@
+---
+# The database is restored from a dump, so Miniflux can't be older than the one that wrote it.
+# renovate: datasource=docker depName=miniflux/miniflux
+miniflux_version: "2.3.5"
+# A major bump needs a dump and restore, not just a new image (renovate.json holds majors back).
+# renovate: datasource=docker depName=postgres
+miniflux_postgres_version: "18.7-alpine"
+miniflux_project: /home/emil/miniflux
+# Written once the database is restored; Miniflux stays stopped until then.
+miniflux_marker: "{{ miniflux_project }}/.migrated"
+# Where the dump lands on the new guest, for the restore.
+miniflux_restore_dir: "{{ miniflux_project }}/restore"
+# On the old guest, emptied and removed around each export.
+miniflux_dump_dir: /var/tmp/miniflux-dump

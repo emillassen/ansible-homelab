@@ -1,0 +1,55 @@
+---
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ miniflux_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+# Only the two containers use it, so it's made here, never copied or vaulted.
+# Postgres reads it once, when it creates the database.
+- name: Generate the database password
+  ansible.builtin.copy:
+    content: "MINIFLUX_DB_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}\n"
+    dest: "{{ miniflux_project }}/.env"
+    owner: emil
+    group: emil
+    mode: "0600"
+    force: false
+  no_log: true
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ miniflux_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: miniflux_compose
+
+- name: Check for the restored database
+  ansible.builtin.stat:
+    path: "{{ miniflux_marker }}"
+  register: miniflux_migrated
+
+# Before the restore only the empty database runs; Miniflux itself would set up
+# a new, empty install in it.
+- name: Run Postgres
+  community.docker.docker_compose_v2:
+    project_src: "{{ miniflux_project }}"
+    services: [db]
+    pull: missing
+    state: present
+  when:
+    - not miniflux_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and miniflux_compose is not changed)
+
+- name: Run Miniflux once its database is restored
+  community.docker.docker_compose_v2:
+    project_src: "{{ miniflux_project }}"
+    pull: missing
+    state: present
+  when:
+    - miniflux_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and miniflux_compose is not changed)
