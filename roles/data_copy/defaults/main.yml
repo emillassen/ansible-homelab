@@ -12,5 +12,9 @@ data_copy_group: root
 # Optional. Empty the directory before unpacking (a package already filled it).
 data_copy_clean: false
 data_copy_staging: /home/ansible/transfer
+# On the old guest. The directory is the login user's and 0700, so the archive is
+# private and can be fetched without become.
+data_copy_archive_dir: /var/tmp/ansible-migrate
+data_copy_archive: "{{ data_copy_archive_dir }}/{{ data_copy_name }}.tar.gz"
 # Optional. Stopped after the marker check and started again after the import.
 data_copy_service: ""
