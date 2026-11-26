@@ -53,7 +53,11 @@
     requirements: "{{ esphome_venv | dirname }}/requirements.txt"
     virtualenv: "{{ esphome_venv }}"
     virtualenv_command: python3 -m venv
-  when: not ansible_check_mode or ('python3-venv' in ansible_facts.packages and 'python3-packaging' in ansible_facts.packages)
+  # Under --check the module reports changed for any requirements file, so it runs only
+  # when the requirements change (and the packages it imports are already there).
+  when: >-
+    not ansible_check_mode or (esphome_requirements is changed
+    and 'python3-venv' in ansible_facts.packages and 'python3-packaging' in ansible_facts.packages)
   notify: Restart esphome
 
 - name: Write the service unit
