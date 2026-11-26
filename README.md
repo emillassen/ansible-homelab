@@ -321,6 +321,17 @@ Before each rebuild, the report lists the data to copy, how, and how it will be 
 
 A rebuild is done when it's accepted and has a backup (the nightly vzdump picks up new IDs). The old guest stays stopped until you delete it.
 
+### A lost guest
+
+Restore it from its nightly vzdump on Holocron; that brings the data and the `.migrated` markers back, and `run check --limit <host>` should then show nothing to do.
+
+Provisioning it again with no old guest to copy from (a fresh install) leaves each app with copied data stopped: its start is gated on `.migrated` in its data directory (the role's `*_marker` default or "Check for the migrated data" task). Once the data is in place, or to start empty on purpose, create the marker on the guest and apply:
+
+```sh
+touch <data directory>/.migrated
+ssh ansible-controller run apply --limit <host>
+```
+
 ## Apply a Renovate PR
 
 1. Read the PR and the upstream release notes, then merge it.
