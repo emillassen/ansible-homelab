@@ -1,6 +1,5 @@
 ---
 vmid: 122
-legacy_host: homepage-old
 cores: 2
 memory: 4096
 disk_gb: 6

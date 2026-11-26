@@ -1,6 +1,5 @@
 ---
 vmid: 124
-legacy_host: uptime-kuma-old
 cores: 1
 memory: 1024
 disk_gb: 4

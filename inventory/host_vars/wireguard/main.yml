@@ -1,6 +1,5 @@
 ---
 vmid: 118
-legacy_host: wireguard-old
 cores: 1
 memory: 1024
 disk_gb: 8

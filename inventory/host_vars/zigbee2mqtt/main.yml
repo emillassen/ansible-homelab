@@ -1,6 +1,5 @@
 ---
 vmid: 116
-legacy_host: zigbee2mqtt-old
 cores: 2
 memory: 2048
 disk_gb: 6

@@ -1,6 +1,5 @@
 ---
 vmid: 211
-legacy_host: miniflux-linkding-old
 cores: 2
 memory: 4096
 disk_gb: 32

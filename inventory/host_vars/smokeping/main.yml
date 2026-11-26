@@ -1,6 +1,5 @@
 ---
 vmid: 114
-legacy_host: smokeping-old
 cores: 1
 memory: 1024
 disk_gb: 2

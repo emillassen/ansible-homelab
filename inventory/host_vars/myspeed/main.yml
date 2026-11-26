@@ -1,6 +1,5 @@
 ---
 vmid: 123
-legacy_host: myspeed-old
 cores: 1
 memory: 1024
 disk_gb: 4

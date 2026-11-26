@@ -1,6 +1,5 @@
 ---
 vmid: 121
-legacy_host: bentopdf-old
 cores: 1
 memory: 512
 disk_gb: 4

@@ -1,6 +1,5 @@
 ---
 vmid: 115
-legacy_host: mosquitto-old
 cores: 1
 memory: 512
 disk_gb: 4

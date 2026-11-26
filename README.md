@@ -282,6 +282,7 @@ Install the Renovate app on the repo. It opens a dependency dashboard issue and 
 
 Before each rebuild, the report lists the data to copy, how, and how it will be tested. Below, `<host>` is the new guest, `<old>` and `<new>` are the old and new IDs.
 
+1. Point the inventory at both guests. Add the old guest to `legacy_lxc` or `legacy_vm` in `inventory/hosts.yml` as `<host>-old`, with `ansible_host` (its production IP) and `migrate_roles` (the roles with a `migrate_export.yml`). In `inventory/host_vars/<host>/main.yml` set `legacy_host: <host>-old`, the new `vmid`, `net_production: false` and `ansible_host` to the temporary address. Copy the `<host>` line in `known_hosts` to a `<host>-old` line. Afterwards, remove all of it again.
 1. Provision on the temporary MAC and DHCP address, as in "Add a service". Zigbee2MQTT and anything on NFS stay stopped.
 1. Copy the data, if the service has any. The old guest lists its roles under `migrate_roles` in `inventory/hosts.yml`. The export stops the app on the old guest, so this is the start of the outage:
 

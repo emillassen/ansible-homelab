@@ -1,6 +1,5 @@
 ---
 vmid: 120
-legacy_host: jellyfin-old
 cores: 8
 memory: 8192
 disk_gb: 32

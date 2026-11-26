@@ -1,6 +1,5 @@
 ---
 vmid: 213
-legacy_host: grafana-loki-old
 cores: 4
 memory: 8192
 disk_gb: 32

@@ -1,6 +1,5 @@
 ---
 vmid: 209
-legacy_host: changedetection-old
 cores: 4
 memory: 4096
 disk_gb: 32

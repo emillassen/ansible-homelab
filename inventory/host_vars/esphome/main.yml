@@ -1,6 +1,5 @@
 ---
 vmid: 125
-legacy_host: esphome-old
 cores: 4
 memory: 4096
 disk_gb: 10

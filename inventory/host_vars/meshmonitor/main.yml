@@ -1,6 +1,5 @@
 ---
 vmid: 216
-legacy_host: meshmonitor-old
 cores: 4
 memory: 4096
 disk_gb: 32

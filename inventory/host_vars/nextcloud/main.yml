@@ -1,6 +1,5 @@
 ---
 vmid: 215
-legacy_host: nextcloud-old
 cores: 4
 memory: 8192
 disk_gb: 32

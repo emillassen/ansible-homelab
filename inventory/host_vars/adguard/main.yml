@@ -1,6 +1,5 @@
 ---
 vmid: 117
-legacy_host: adguard-old
 cores: 2
 memory: 2048
 disk_gb: 8

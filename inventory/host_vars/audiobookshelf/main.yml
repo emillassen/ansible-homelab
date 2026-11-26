@@ -1,6 +1,5 @@
 ---
 vmid: 212
-legacy_host: audiobookshelf-old
 cores: 2
 memory: 2048
 disk_gb: 32
