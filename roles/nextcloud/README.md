@@ -6,7 +6,11 @@ The data directory is the `proxmox-nextcloud` NFS share on Holocron, mounted by 
 
 `run migrate` stops AIO on the old VM (`STOP_CONTAINERS=1`, then the mastercontainer), which makes the database container dump the database. It copies the Docker volumes listed in `nextcloud_volumes` with their owners: AIO's configuration and secrets, the Nextcloud install with `config.php`, the dump, Apache and Euro-Office. The database volume isn't copied: on its first start the new database container finds the dump and an empty volume and restores it, which is AIO's own path for a Postgres upgrade. Settings made in the UI (2FA, apps, email, trusted proxies) travel with the volumes.
 
-The VM disk is 64 GB, as the setup guide says. A clone has the template's 32 GB, so after a rebuild grow the disk to 64 GB in Proxmox (`provision` prints a reminder) and reboot; cloud-init grows the root filesystem.
+The VM disk is 64 GB, as the setup guide says. A clone has the template's 32 GB, so after a rebuild grow the disk to 64 GB in Proxmox (`provision` prints a reminder), then grow the partition and filesystem online in the VM (`base` turns cloud-init off, so nothing does it at boot):
+
+```sh
+sudo growpart /dev/sda 1 && sudo resize2fs /dev/sda1
+```
 
 ## Resources
 
