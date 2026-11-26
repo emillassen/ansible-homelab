@@ -1,7 +1,7 @@
 ---
 vmid: 211
 cores: 2
-memory: 4096
+memory: 2048
 disk_gb: 32
 mac_temp: "BC:24:11:4F:B3:50"
 mac_production: "BC:24:11:C0:78:F2"
