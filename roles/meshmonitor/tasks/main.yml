@@ -16,6 +16,17 @@
     mode: "0644"
   register: meshmonitor_compose
 
+# Stored device keys and passwords are sealed with it, so it must stay the same.
+- name: Write the session secret
+  ansible.builtin.copy:
+    content: "SESSION_SECRET={{ meshmonitor_session_secret }}\n"
+    dest: "{{ meshmonitor_project }}/.env"
+    owner: emil
+    group: emil
+    mode: "0600"
+  no_log: true
+  register: meshmonitor_env
+
 - name: Check for the migrated data
   ansible.builtin.stat:
     path: "{{ meshmonitor_marker }}"
@@ -49,4 +60,4 @@
     - net_production
     - meshmonitor_migrated.stat.exists
     - meshmonitor_usb.stat.exists
-    - not ansible_check_mode or (docker_present and meshmonitor_compose is not changed)
+    - not ansible_check_mode or (docker_present and meshmonitor_compose is not changed and meshmonitor_env is not changed)

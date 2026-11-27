@@ -14,19 +14,16 @@
     name: mosquitto
     state: stopped
 
-- name: Copy the password file and the database
+- name: Copy the database
   ansible.builtin.copy:
-    src: "{{ mosquitto_staging }}/{{ item | basename }}"
-    dest: "{{ item }}"
+    src: "{{ mosquitto_staging }}/{{ mosquitto_db | basename }}"
+    dest: "{{ mosquitto_db }}"
     owner: mosquitto
     group: mosquitto
     mode: "0600"
   diff: false
   # The fetch doesn't run under --check, so there is nothing staged to copy.
   when: not ansible_check_mode
-  loop:
-    - "{{ mosquitto_passwd }}"
-    - "{{ mosquitto_db }}"
 
 - name: Mark the import done
   ansible.builtin.copy:

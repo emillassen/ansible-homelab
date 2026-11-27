@@ -12,3 +12,5 @@ paperless_gotenberg_version: "8.40.0"
 paperless_tika_version: "4.2.0"
 paperless_project: /home/emil/paperless
 paperless_url: https://paperless.hjem.sh
+paperless_db_password: "{{ vault_paperless_db_password }}"
+paperless_secret_key: "{{ vault_paperless_secret_key }}"

@@ -319,6 +319,7 @@ Repo setting: auto-merge allowed, head branches deleted after merge.
 1. Write `roles/<service>/` with versions pinned in `defaults/main.yml`, each under a `# renovate:` comment.
 1. Add a play for it to `playbooks/site.yml`.
 1. Add `verify_units` and `verify_http` (or `verify_tcp`) for it to `host_vars` (see "Verify").
+1. Put any password, token or key the role writes in the vault (see "Secrets").
 1. Commit, push, then:
 
    ```sh
@@ -401,6 +402,14 @@ ssh ansible-controller run verify --limit <host>
 ```
 
 A bump to `ansible-core`, `uv` or a collection takes effect at `sync`. Follow it with `run check` with no `--limit`. A change to `scripts/` reaches `113` only at `run apply --limit ansible-controller`.
+
+## Secrets
+
+Every password, token and key that Ansible writes comes from the vault (`inventory/group_vars/all/vault.yml`), never generated on the guest, so a guest rebuilt from scratch gets the same logins. A role's default names the vault variable (`esphome_dashboard_password: "{{ vault_esphome_dashboard_password }}"`); a missing one fails the run with the variable's name.
+
+Add one with `.venv/bin/ansible-vault edit inventory/group_vars/all/vault.yml`; a random value comes from `openssl rand -base64 32 | tr -d '/+=' | cut -c1-32`. Then commit, push, sync and apply.
+
+Left with the app's data (PBS backups and `run migrate` bring them back), because the app writes and rewrites them itself: users and passwords inside an app's database (Uptime Kuma, Immich, Nextcloud, Jellyfin, Audiobookshelf, Grafana, AdGuard's `AdGuardHome.yaml`), WireGuard's `wg0.conf` (server key and peers), ESPHome's `secrets.yaml`, Linkding's `secretkey.txt` (losing it only signs everyone out) and Nextcloud AIO's own passwords.
 
 ## Rotate secrets
 

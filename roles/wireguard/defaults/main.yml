@@ -10,3 +10,7 @@ wireguard_dashboard_data: /var/lib/wgdashboard
 wireguard_legacy_src: /opt/WGDashboard/src
 # The dashboard (and with it wg0, which it brings up) only runs once this exists.
 wireguard_marker: "{{ wireguard_dashboard_data }}/.migrated"
+# The dashboard login: the bcrypt hash from the ini's [Account] password, and the TOTP
+# secret (base32) the authenticator app was enrolled with.
+wireguard_dashboard_password_hash: "{{ vault_wireguard_dashboard_password_hash }}"
+wireguard_dashboard_totp_key: "{{ vault_wireguard_dashboard_totp_key }}"

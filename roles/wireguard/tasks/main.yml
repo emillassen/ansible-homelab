@@ -189,6 +189,27 @@
     path: "{{ wireguard_marker }}"
   register: wireguard_migrated
 
+# The login comes from the vault, so a rebuild keeps the same password and TOTP. The ini
+# holds both, so only root may read it. A password changed in the dashboard is put back.
+- name: Set the dashboard login
+  community.general.ini_file:
+    path: "{{ wireguard_dashboard_data }}/wg-dashboard.ini"
+    section: Account
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    create: false
+    mode: "0600"
+  loop:
+    - {option: password, value: "{{ wireguard_dashboard_password_hash }}"}
+    - {option: totp_key, value: "{{ wireguard_dashboard_totp_key }}"}
+    - {option: enable_totp, value: "true"}
+    - {option: totp_verified, value: "true"}
+  loop_control:
+    label: "{{ item.option }}"
+  no_log: true
+  when: wireguard_migrated.stat.exists
+  notify: Restart wg-dashboard
+
 # The dashboard brings wg0 up (autostart in its ini). It holds the same keys as the
 # old guest, so it only runs on the production MAC and address, after the copy.
 - name: Decide whether to run

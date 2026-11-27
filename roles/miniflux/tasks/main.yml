@@ -7,16 +7,15 @@
     group: emil
     mode: "0755"
 
-# Only the two containers use it, so it's made here, never copied or vaulted.
-# Postgres reads it once, when it creates the database.
-- name: Generate the database password
+# Postgres reads it once, when it creates the database: changing it in the vault
+# later doesn't change the database's password.
+- name: Write the database password
   ansible.builtin.copy:
-    content: "MINIFLUX_DB_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}\n"
+    content: "MINIFLUX_DB_PASSWORD={{ miniflux_db_password }}\n"
     dest: "{{ miniflux_project }}/.env"
     owner: emil
     group: emil
     mode: "0600"
-    force: false
   no_log: true
 
 - name: Write the compose file

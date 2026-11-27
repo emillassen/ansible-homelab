@@ -12,3 +12,4 @@ miniflux_marker: "{{ miniflux_project }}/.migrated"
 miniflux_restore_dir: "{{ miniflux_project }}/restore"
 # On the old guest, emptied and removed around each export.
 miniflux_dump_dir: /var/tmp/miniflux-dump
+miniflux_db_password: "{{ vault_miniflux_db_password }}"

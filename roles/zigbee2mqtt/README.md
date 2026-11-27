@@ -12,7 +12,7 @@ pct exec 104 -- systemctl start zigbee2mqtt   # after the old guest is back on i
 ```
  A second instance on the coordinator, or a new network key, means re-pairing every device.
 
-The frontend (8081) is reachable only from `web_client_sources` (LAN clients use `z2m.hjem.sh`) and asks for a token: `frontend.auth_token`, given through the `ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN` environment override from `/etc/zigbee2mqtt/frontend.env`. The token is picked on the first apply and kept on the guest (a rebuilt guest gets a new one); read it with `cat /etc/zigbee2mqtt/frontend.env`.
+The frontend (8081) is reachable only from `web_client_sources` (LAN clients use `z2m.hjem.sh`) and asks for a token: `frontend.auth_token`, given through the `ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN` environment override from `/etc/zigbee2mqtt/frontend.env`. The token is `vault_zigbee2mqtt_frontend_token`.
 
 ## Resources
 

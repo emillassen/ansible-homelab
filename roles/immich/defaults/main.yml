@@ -20,3 +20,4 @@ immich_marker: "{{ immich_project }}/.migrated"
 immich_restore_dir: "{{ immich_project }}/restore"
 # On the old guest, removed after each export.
 immich_dump_dir: /var/tmp/immich-dump
+immich_db_password: "{{ vault_immich_db_password }}"
