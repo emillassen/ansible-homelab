@@ -21,6 +21,7 @@ base_purge_packages_lxc:
   - postfix
 base_purge_packages_vm:
   - apport
+  - apport-core-dump-handler
   - command-not-found
   - fwupd
   - landscape-common
