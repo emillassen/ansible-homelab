@@ -11,12 +11,14 @@
 #   verify_interfaces: network links that must be up
 #   verify_docker_exited_ok: containers allowed to be stopped (one-shot jobs)
 # Every guest also gets: no failed units, local disks under verify_disk_max_pct, no
-# pending reboot, and (Docker hosts) every container running and not unhealthy.
+# reboot pending for over a day, and (Docker hosts) every container running and not unhealthy.
 - name: Verify
   hosts: managed
   gather_facts: false
   vars:
     verify_disk_max_pct: 80
+    # unattended-upgrades reboots at 02:00, so a newer request is expected, not a problem.
+    verify_reboot_max_age_h: 26
   tasks:
     - name: List failed units
       ansible.builtin.command: systemctl list-units --failed --no-legend --plain
@@ -107,8 +109,12 @@
 
     - name: Note a pending reboot
       ansible.builtin.set_fact:
-        verify_problems: "{{ verify_problems + ['reboot required'] }}"
-      when: verify_reboot.stat.exists
+        verify_problems: "{{ verify_problems + ['reboot pending since ' ~ verify_reboot_age_h ~ ' h'] }}"
+      vars:
+        verify_reboot_age_h: "{{ ((now().timestamp() - verify_reboot.stat.mtime) / 3600) | int }}"
+      when:
+        - verify_reboot.stat.exists
+        - verify_reboot_age_h | int >= verify_reboot_max_age_h
 
     - name: Note bad HTTP answers
       ansible.builtin.set_fact:

@@ -26,11 +26,23 @@ ssh ansible-controller run migrate --check --limit mosquitto,mosquitto-old
 
 `run verify` (`playbooks/verify.yml`) checks that every guest is healthy, not only that its config matches. It changes nothing. A host fails with a list of everything wrong on it:
 
-1. Every guest: no failed systemd units, local disks under 80%, no pending reboot.
+1. Every guest: no failed systemd units, local disks under 80%, no reboot pending for over 26 hours (unattended-upgrades reboots at 02:00).
 1. Docker hosts: every container running and not unhealthy, except those in `verify_docker_exited_ok`.
 1. From `host_vars`: `verify_units` must be active, `verify_http` must answer on the guest with its `status` (default 200, redirects not followed), `verify_tcp` ports must accept a connection, `verify_interfaces` must be up.
 
 Run it after any `apply`, rebuild or Renovate merge, and whenever something seems off.
+
+`ansible-verify.timer` on `113` runs it every morning at 07:30 and pushes the result to Uptime Kuma: up, or down with the failing hosts in the message. If it is busy behind another `sync` or `run`, it waits up to half an hour. The output is in `journalctl -u ansible-verify` on `113`. To set it up:
+
+1. In Uptime Kuma, add a monitor of type Push named `Ansible verify`, heartbeat interval `90000` seconds (25 hours, so a missed night also alerts), retries `0`, with the Discord notification. Copy the token from the push URL: the part after `/api/push/` and before `?`.
+1. On the laptop, add it to the vault, then commit, push, sync and apply:
+
+   ```sh
+   .venv/bin/ansible-vault edit inventory/group_vars/all/vault.yml   # vault_kuma_verify_push_token: "<token>"
+   ssh ansible-controller run apply --limit ansible-controller
+   ```
+
+   Without the token, the controller role leaves the timer out.
 
 ## Bootstrap
 
