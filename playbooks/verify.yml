@@ -149,8 +149,8 @@
         verify_reason: "{{ verify_needrestart.stderr | default('') or verify_needrestart.msg | default('rc ' ~ verify_needrestart.rc) }}"
       when: verify_needrestart.rc | default(-1) != 0
 
-    # needrestart never restarts these itself (its override_rc and deferred list); a reboot
-    # or a container restart picks them up.
+    # needrestart never restarts these itself (its override_rc, e.g. ^dbus and ^network,
+    # and its deferred list); a reboot or a container restart picks them up.
     - name: Note services on replaced libraries
       ansible.builtin.set_fact:
         verify_problems: "{{ verify_problems + ['needs restart (old libraries): ' ~ verify_stale | join(', ')] }}"
@@ -162,6 +162,7 @@
         verify_needrestart_deferred:
           - dbus
           - dbus-broker
+          - network.*
           - systemd-logind
           - unattended-upgrades
           - apt-daily
