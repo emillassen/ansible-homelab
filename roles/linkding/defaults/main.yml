@@ -1,0 +1,9 @@
+---
+# The data is copied, so this can't be older than the version that last wrote it.
+# renovate: datasource=docker depName=sissbruecker/linkding
+linkding_version: "1.47.0"
+linkding_project: /home/emil/linkding
+# The image runs as www-data (uid 33), who owns data/.
+linkding_uid: "33"
+# Linkding stays stopped until `run migrate` has copied data/ (db.sqlite3, secretkey.txt).
+linkding_marker: "{{ linkding_project }}/data/.migrated"

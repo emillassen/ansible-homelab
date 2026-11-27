@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run check|apply [--limit PATTERN]
+# run check|apply|verify [--limit PATTERN]
 # run provision|migrate [--check] --limit PATTERN
 set -Eeuo pipefail
 
@@ -8,7 +8,7 @@ if [ "$(id -u)" -eq 0 ]; then
 fi
 
 usage() {
-  echo "usage: run check|apply [--limit PATTERN]" >&2
+  echo "usage: run check|apply|verify [--limit PATTERN]" >&2
   echo "       run provision|migrate [--check] --limit PATTERN" >&2
   exit 64
 }
@@ -45,6 +45,7 @@ args=()
 case "$verb" in
   check) args=(playbooks/site.yml --check --diff) ;;
   apply) args=(playbooks/site.yml) ;;
+  verify) args=(playbooks/verify.yml) ;;
   provision)
     [ -n "$limit" ] || { echo "provision needs --limit" >&2; exit 64; }
     args=(playbooks/provision.yml)

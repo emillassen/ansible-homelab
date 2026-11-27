@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Runs `run verify` and reports the result to an Uptime Kuma push monitor.
+# Started by ansible-verify.timer as ansible; KUMA_PUSH_URL comes from /etc/ansible-verify.env.
+set -Euo pipefail
+: "${KUMA_PUSH_URL:?KUMA_PUSH_URL is not set}"
+
+out=$(mktemp)
+trap 'rm -f "$out"' EXIT
+
+# 75: another sync or run holds the lock. Wait for it, up to half an hour.
+for _ in 1 2 3 4 5 6; do
+  rc=0
+  /usr/local/sbin/ansible-run verify >"$out" 2>&1 || rc=$?
+  [ "$rc" -eq 75 ] || break
+  sleep 300
+done
+cat "$out"
+
+if [ "$rc" -eq 0 ]; then
+  status=up
+  msg=OK
+else
+  status=down
+  hosts=$(awk '/^PLAY RECAP/ { recap = 1; next }
+    recap && / : ok=/ && (/failed=[1-9]/ || /unreachable=[1-9]/) { print $1 }' "$out" | paste -sd, -)
+  msg="failed: ${hosts:-run verify exited $rc}"
+fi
+
+# The URL holds the token, so it goes to curl on stdin, not on the command line.
+push=0
+printf 'url = "%s"\n' "$KUMA_PUSH_URL" |
+  curl -fsS -m 30 -o /dev/null -K - -G \
+    --data-urlencode "status=$status" --data-urlencode "msg=$msg" || push=$?
+[ "$push" -eq 0 ] || echo "push to Uptime Kuma failed (curl $push)" >&2
+[ "$rc" -ne 0 ] || rc=$push
+exit "$rc"

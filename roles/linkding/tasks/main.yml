@@ -1,0 +1,32 @@
+---
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ linkding_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ linkding_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: linkding_compose
+
+- name: Check for the migrated data
+  ansible.builtin.stat:
+    path: "{{ linkding_marker }}"
+  register: linkding_migrated
+
+# Without the copied data it would start a new, empty Linkding.
+- name: Run Linkding once its data is here
+  community.docker.docker_compose_v2:
+    project_src: "{{ linkding_project }}"
+    pull: missing
+    state: present
+  when:
+    - linkding_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and linkding_compose is not changed)

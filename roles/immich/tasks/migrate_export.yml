@@ -1,0 +1,55 @@
+---
+# On the old VM. The library stays on Holocron; only the database moves, by Immich's
+# documented dump and restore. Stopping the server and machine learning starts the outage;
+# Postgres keeps running for the dump.
+- name: Stop Immich on the old VM
+  ansible.builtin.command:
+    cmd: docker compose stop immich-server immich-machine-learning
+    chdir: "{{ immich_project }}"
+  changed_when: true
+
+# Compared after the restore.
+- name: Count the assets
+  ansible.builtin.command:
+    cmd: docker compose exec -T database psql --username=postgres --dbname=immich -tAc "select count(*) from asset"
+    chdir: "{{ immich_project }}"
+  register: immich_old_assets
+  changed_when: false
+  check_mode: false
+
+- name: Keep the asset count for the import
+  ansible.builtin.set_fact:
+    immich_asset_count: "{{ immich_old_assets.stdout | trim | int }}"
+
+- name: Dump and export the database
+  when: not ansible_check_mode
+  block:
+    - name: Create the dump directory
+      ansible.builtin.file:
+        path: "{{ immich_dump_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Dump the database
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          docker compose exec -T database pg_dump --clean --if-exists --dbname=immich --username=postgres
+          | gzip > {{ immich_dump_dir }}/immich.sql.gz
+        chdir: "{{ immich_project }}"
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Export the dump
+      ansible.builtin.include_role:
+        name: data_copy
+        tasks_from: dir_export
+      vars:
+        data_copy_name: immich
+        data_copy_path: "{{ immich_dump_dir }}"
+
+  always:
+    - name: Delete the dump on the old VM
+      ansible.builtin.file:
+        path: "{{ immich_dump_dir }}"
+        state: absent

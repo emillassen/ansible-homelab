@@ -1,6 +1,5 @@
 ---
 vmid: 118
-legacy_host: wireguard-old
 cores: 1
 memory: 1024
 disk_gb: 8
@@ -18,3 +17,10 @@ ufw_allow:
   - port: "10086"
     proto: tcp
 ufw_routed: allow
+
+# run verify (playbooks/verify.yml)
+verify_units: [wg-dashboard]
+verify_http:
+  - url: http://127.0.0.1:10086/
+# The dashboard brings wg0 up, not wg-quick@wg0.
+verify_interfaces: [wg0]

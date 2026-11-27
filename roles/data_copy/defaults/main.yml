@@ -9,6 +9,10 @@ data_copy_include: [.]
 # Owner of everything unpacked on the new guest.
 data_copy_owner: root
 data_copy_group: root
+# true: keep each file's numeric owner, group and mode from the old guest instead
+# (directories with mixed owners, like Docker volumes). data_copy_owner then only
+# applies to data_copy_path itself.
+data_copy_keep_owners: false
 # Optional. Empty the directory before unpacking (a package already filled it).
 data_copy_clean: false
 data_copy_staging: /home/ansible/transfer

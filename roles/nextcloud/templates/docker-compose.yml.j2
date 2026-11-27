@@ -1,0 +1,24 @@
+# Managed by Ansible (roles/nextcloud). AIO's compose, as the guide sets it.
+name: nextcloud
+services:
+  nextcloud-aio-mastercontainer:
+    image: {{ nextcloud_aio_image }}
+    init: true
+    restart: always
+    container_name: nextcloud-aio-mastercontainer
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    network_mode: bridge
+    ports:
+      - 0.0.0.0:8080:8080
+    environment:
+      APACHE_PORT: 11000
+      APACHE_IP_BINDING: 0.0.0.0
+      NEXTCLOUD_DATADIR: {{ nextcloud_datadir }}
+      NEXTCLOUD_MNT: {{ nextcloud_mnt }}
+      AIO_DISABLE_BACKUP_SECTION: true
+
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer

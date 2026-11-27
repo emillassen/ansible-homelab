@@ -1,0 +1,158 @@
+---
+# Read-only health check of every managed guest: `run verify [--limit PATTERN]`.
+# Nothing here changes a guest. A host fails when any check fails, and its message lists
+# every problem found, not only the first.
+#
+# Per-host checks live in host_vars (all optional):
+#   verify_units:      systemd units that must be active
+#   verify_http:       [{url, status (default 200), headers}] fetched on the guest itself,
+#                      redirects not followed and certificates not checked
+#   verify_tcp:        ports that must accept a connection on 127.0.0.1
+#   verify_interfaces: network links that must be up
+#   verify_docker_exited_ok: containers allowed to be stopped (one-shot jobs)
+# Every guest also gets: no failed units, local disks under verify_disk_max_pct, no
+# reboot pending for over a day, and (Docker hosts) every container running and not unhealthy.
+- name: Verify
+  hosts: managed
+  gather_facts: false
+  vars:
+    verify_disk_max_pct: 80
+    # unattended-upgrades reboots at 02:00, so a newer request is expected, not a problem.
+    verify_reboot_max_age_h: 26
+  tasks:
+    - name: List failed units
+      ansible.builtin.command: systemctl list-units --failed --no-legend --plain
+      register: verify_failed
+      changed_when: false
+      check_mode: false
+
+    - name: Check the required units
+      ansible.builtin.command: systemctl is-active {{ item }}
+      loop: "{{ verify_units | default([]) }}"
+      register: verify_unit_state
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Measure local disks
+      ansible.builtin.command: >-
+        df -l --output=pcent,target -x tmpfs -x devtmpfs -x overlay -x squashfs -x efivarfs
+      register: verify_df
+      changed_when: false
+      check_mode: false
+
+    - name: Look for a pending reboot
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: verify_reboot
+
+    - name: Fetch the HTTP endpoints
+      ansible.builtin.uri:
+        url: "{{ item.url }}"
+        headers: "{{ item.headers | default({}) }}"
+        status_code: "{{ item.status | default(200) }}"
+        follow_redirects: none
+        validate_certs: false
+        timeout: 10
+      loop: "{{ verify_http | default([]) }}"
+      loop_control:
+        label: "{{ item.url }}"
+      register: verify_http_result
+      failed_when: false
+      check_mode: false
+
+    - name: Connect to the TCP ports
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ item }}"
+        timeout: 5
+      loop: "{{ verify_tcp | default([]) }}"
+      register: verify_tcp_result
+      failed_when: false
+      check_mode: false
+
+    - name: Check the network links
+      ansible.builtin.command: ip -br link show {{ item }}
+      loop: "{{ verify_interfaces | default([]) }}"
+      register: verify_link
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: List containers
+      ansible.builtin.command: docker ps -a --format json
+      register: verify_containers
+      changed_when: false
+      check_mode: false
+      when: "'docker' in group_names"
+
+    # Each check appends to verify_problems; failed_when: false above keeps every check
+    # running, so the judgement happens here.
+    - name: Start the problem list
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_failed.stdout_lines | map('split') | map('first')
+                             | map('regex_replace', '^', 'failed unit: ') | list }}"
+
+    - name: Note inactive units
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['unit ' ~ item.item ~ ': ' ~ item.stdout] }}"
+      loop: "{{ verify_unit_state.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.rc != 0
+
+    - name: Note full disks
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['disk ' ~ item.split()[1] ~ ': ' ~ item.split()[0]] }}"
+      loop: "{{ verify_df.stdout_lines[1:] }}"
+      when: (item.split()[0] | replace('%', '') | int) >= verify_disk_max_pct
+
+    - name: Note a pending reboot
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['reboot pending since ' ~ verify_reboot_age_h ~ ' h'] }}"
+      vars:
+        verify_reboot_age_h: "{{ ((now().timestamp() - verify_reboot.stat.mtime) / 3600) | int }}"
+      when:
+        - verify_reboot.stat.exists
+        - verify_reboot_age_h | int >= verify_reboot_max_age_h
+
+    - name: Note bad HTTP answers
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + [item.item.url ~ ': ' ~ (item.status if item.status > 0 else item.msg)] }}"
+      loop: "{{ verify_http_result.results }}"
+      loop_control:
+        label: "{{ item.item.url }}"
+      when: item.status != (item.item.status | default(200))
+
+    - name: Note closed ports
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['port ' ~ item.item ~ ' closed'] }}"
+      loop: "{{ verify_tcp_result.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.state is not defined
+
+    - name: Note links that are down
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['link ' ~ item.item ~ ' down'] }}"
+      loop: "{{ verify_link.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.rc != 0 or item.stdout is not search('[<,]UP[,>]')
+
+    - name: Note stopped or unhealthy containers
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['container ' ~ item.Names ~ ': ' ~ item.Status] }}"
+      loop: "{{ verify_containers.stdout_lines | default([]) | map('from_json') | list }}"
+      loop_control:
+        label: "{{ item.Names }}"
+      when: >-
+        (item.State != 'running' and item.Names not in verify_docker_exited_ok | default([]))
+        or item.Status is search('unhealthy|health: starting')
+
+    - name: Report
+      ansible.builtin.assert:
+        that: verify_problems | length == 0
+        fail_msg: "{{ verify_problems }}"
+        success_msg: healthy
+        quiet: true

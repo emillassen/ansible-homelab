@@ -1,9 +1,21 @@
 ---
+# A clone has the template's 32 GB disk. A bigger disk_gb is grown by hand: the disk in
+# Proxmox, then the partition and filesystem in the guest (base turns cloud-init off,
+# so nothing grows them at boot).
 - name: Check the disk size
   ansible.builtin.assert:
     that:
-      - disk_gb | int == 32
-    fail_msg: "Clones of {{ proxmox_guest_vm_template_vmid }} have a 32 GB disk; disk_gb is {{ disk_gb }}."
+      - disk_gb | int >= 32
+    fail_msg: "Clones of {{ proxmox_guest_vm_template_vmid }} have a 32 GB disk, which can't shrink; disk_gb is {{ disk_gb }}."
+
+- name: Remind to grow the disk
+  ansible.builtin.debug:
+    msg: >-
+      Grow the disk of {{ vmid }} from 32 to {{ disk_gb }} GB in Proxmox, then in the
+      guest: sudo growpart /dev/sda 1 && sudo resize2fs /dev/sda1
+  when:
+    - not proxmox_guest_exists
+    - disk_gb | int > 32
 
 - name: Clone the VM from the template
   community.proxmox.proxmox_kvm:

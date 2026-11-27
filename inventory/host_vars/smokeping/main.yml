@@ -1,6 +1,5 @@
 ---
 vmid: 114
-legacy_host: smokeping-old
 cores: 1
 memory: 1024
 disk_gb: 2
@@ -15,3 +14,8 @@ ansible_host: 192.168.1.109
 ufw_allow:
   - port: "80"
     proto: tcp
+
+# run verify (playbooks/verify.yml)
+verify_units: [apache2, smokeping]
+verify_http:
+  - url: http://127.0.0.1/smokeping/

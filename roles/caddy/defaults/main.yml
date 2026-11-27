@@ -15,7 +15,7 @@ caddy_xcaddy_sha512: 99fd895a7b7799b18c43ea0915777d8701aaab2a010035b23495c28b4ae
 # Caddy needs a newer Go than Debian 13 has. Update the checksum with the version
 # (https://go.dev/dl/?mode=json).
 # renovate: datasource=golang-version depName=go
-caddy_go_version: "1.26.11"
+caddy_go_version: "1.27.4"
 caddy_go_sha256: 9849f4e04ee35303714e34fbc3ac8ab44ea3e448a95aa182f91e3b9b79c710ec
 
 caddy_build_dir: /opt/caddy-build

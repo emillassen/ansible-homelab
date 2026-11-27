@@ -15,11 +15,34 @@ On the controller the commands are `ansible-sync` and `ansible-run`. Over SSH as
 ssh ansible-controller sync
 ssh ansible-controller run check --limit caddy
 ssh ansible-controller run apply --limit caddy
+ssh ansible-controller run verify --limit caddy
 ssh ansible-controller run provision --check --limit caddy
 ssh ansible-controller run migrate --check --limit mosquitto,mosquitto-old
 ```
 
 `provision` and `migrate` are yours only; the `207` key can't run them.
+
+## Verify
+
+`run verify` (`playbooks/verify.yml`) checks that every guest is healthy, not only that its config matches. It changes nothing. A host fails with a list of everything wrong on it:
+
+1. Every guest: no failed systemd units, local disks under 80%, no reboot pending for over 26 hours (unattended-upgrades reboots at 02:00).
+1. Docker hosts: every container running and not unhealthy, except those in `verify_docker_exited_ok`.
+1. From `host_vars`: `verify_units` must be active, `verify_http` must answer on the guest with its `status` (default 200, redirects not followed), `verify_tcp` ports must accept a connection, `verify_interfaces` must be up.
+
+Run it after any `apply`, rebuild or Renovate merge, and whenever something seems off.
+
+`ansible-verify.timer` on `113` runs it every morning at 07:30 and pushes the result to Uptime Kuma: up, or down with the failing hosts in the message. If it is busy behind another `sync` or `run`, it waits up to half an hour. The output is in `journalctl -u ansible-verify` on `113`. To set it up:
+
+1. In Uptime Kuma, add a monitor of type Push named `Ansible verify`, heartbeat interval `90000` seconds (25 hours, so a missed night also alerts), retries `0`, with the Discord notification. Copy the token from the push URL: the part after `/api/push/` and before `?`.
+1. On the laptop, add it to the vault, then commit, push, sync and apply:
+
+   ```sh
+   .venv/bin/ansible-vault edit inventory/group_vars/all/vault.yml   # vault_kuma_verify_push_token: "<token>"
+   ssh ansible-controller run apply --limit ansible-controller
+   ```
+
+   Without the token, the controller role leaves the timer out.
 
 ## Bootstrap
 
@@ -255,13 +278,47 @@ It must list exactly `/pool/ansible`, `/vms/903`, `/storage/local-zfs`, `/storag
 
 ### GitHub: Renovate
 
-Install the Renovate app on the repo. It opens a dependency dashboard issue and one PR per bump. Nothing merges on its own.
+Install the Renovate app on the repo. It opens a dependency dashboard issue and one PR per bump. An update only merges once the release is 3 days old (`minimumReleaseAge`).
+
+Renovate merges minor, patch and digest updates itself once `lint` passes. It waits for that by its own runs, so a merge can take a few hours. Anything in `.github/workflows/` merges on its own too, majors included: it only affects CI, and it merges only when the required `lint` check passes. These still wait for you:
+
+1. Majors of the apps and their parts. A Postgres major waits for approval on the dependency dashboard first.
+1. Immich: server, machine learning and Valkey come as one PR. Its Postgres image isn't tracked; update it from the matching upstream Compose file.
+1. Minors and majors in the root `requirements.txt`, `requirements-uv.txt` and `requirements.yml` (patches merge on their own). They take effect at `sync`, so follow one with `run check`.
+
+Two pins follow upstream instead of their own release stream:
+
+1. Zigbee2MQTT's pnpm has no pin: the role installs the version the tag's `package.json` names in `packageManager`.
+1. Gotenberg is held below 9 (`allowedVersions`) to match the Gotenberg major in Paperless's upstream Compose file. Raise the limit when Paperless moves.
+
+A merge changes `main` only. Nothing deploys until `sync` and `apply`.
+
+### GitHub: CI and the ruleset on `main`
+
+`.github/workflows/lint.yml` runs on every PR and every push to `main`:
+
+1. `ansible-playbook --syntax-check` on every playbook, without the vault password
+1. `ansible-lint`, with existing findings in `.ansible-lint-ignore`. Fix one and delete its line. Don't add new lines.
+1. `shellcheck` on every tracked shell script
+1. `renovate-config-validator --strict`
+
+The ruleset on `main` requires a PR and a passing `lint` check, with no approvals required and no bypass. Every change, yours too, goes through a PR:
+
+```sh
+git switch -c <topic>
+git push -u origin <topic>
+gh pr create --fill
+gh pr merge --auto --squash   # merges when lint passes
+```
+
+Repo setting: auto-merge allowed, head branches deleted after merge.
 
 ## Add a service
 
 1. Add the host to `lxc` or `vm` in `inventory/hosts.yml` and write `inventory/host_vars/<host>/main.yml` (copy a neighbour; pick a new temporary MAC with the `BC:24:11` prefix).
 1. Write `roles/<service>/` with versions pinned in `defaults/main.yml`, each under a `# renovate:` comment.
 1. Add a play for it to `playbooks/site.yml`.
+1. Add `verify_units` and `verify_http` (or `verify_tcp`) for it to `host_vars` (see "Verify").
 1. Commit, push, then:
 
    ```sh
@@ -282,6 +339,7 @@ Install the Renovate app on the repo. It opens a dependency dashboard issue and 
 
 Before each rebuild, the report lists the data to copy, how, and how it will be tested. Below, `<host>` is the new guest, `<old>` and `<new>` are the old and new IDs.
 
+1. Point the inventory at both guests. Add the old guest to `legacy_lxc` or `legacy_vm` in `inventory/hosts.yml` as `<host>-old`, with `ansible_host` (its production IP) and `migrate_roles` (the roles with a `migrate_export.yml`). In `inventory/host_vars/<host>/main.yml` set `legacy_host: <host>-old`, the new `vmid`, `net_production: false` and `ansible_host` to the temporary address. Copy the `<host>` line in `known_hosts` to a `<host>-old` line. Afterwards, remove all of it again.
 1. Provision on the temporary MAC and DHCP address, as in "Add a service". Zigbee2MQTT and anything on NFS stay stopped.
 1. Copy the data, if the service has any. The old guest lists its roles under `migrate_roles` in `inventory/hosts.yml`. The export stops the app on the old guest, so this is the start of the outage:
 
@@ -305,7 +363,7 @@ Before each rebuild, the report lists the data to copy, how, and how it will be 
    ssh ansible-controller run apply --limit <host>
    ```
 
-   The second `apply` must show `changed=0`. Then test through the Caddy hostname with real data.
+   The second `apply` must show `changed=0`, and `run verify --limit <host>` must pass. Then test through the Caddy hostname with real data.
 
 1. Rollback, on the Proxmox host. `<mac_temp>` is in `inventory/host_vars/<host>/main.yml`. For a VM use `qm` and `--net0 virtio=<mac_temp>,bridge=vmbr0,firewall=1`. For Zigbee2MQTT run `pct exec <new> -- systemctl disable --now zigbee2mqtt` first, so 116 can't take the coordinator back on its next boot:
 
@@ -318,18 +376,29 @@ Before each rebuild, the report lists the data to copy, how, and how it will be 
 
    Then revert the `host_vars` commit.
 
-A rebuild is done when it's accepted and has a backup (the nightly vzdump picks up new IDs). The old guest stays stopped until you delete it.
+A rebuild is done when it's accepted and has a backup (the 23:30 PBS job picks up new IDs). The old guest stays stopped until you delete it.
+
+### A lost guest
+
+Restore it from its nightly PBS backup (see "Backups"); that brings the data and the `.migrated` markers back, and `run check --limit <host>` should then show nothing to do.
+
+Provisioning it again with no old guest to copy from (a fresh install) leaves each app with copied data stopped: its start is gated on `.migrated` in its data directory (the role's `*_marker` default or "Check for the migrated data" task). Once the data is in place, or to start empty on purpose, create the marker on the guest and apply:
+
+```sh
+touch <data directory>/.migrated
+ssh ansible-controller run apply --limit <host>
+```
 
 ## Apply a Renovate PR
 
-1. Read the PR and the upstream release notes, then merge it.
-1. Then:
+Renovate merges most PRs itself (see "GitHub: Renovate"). Deploy them like this; for a PR it left to you, read the PR and the upstream release notes first, then merge it.
 
-   ```sh
-   ssh ansible-controller sync
-   ssh ansible-controller run check --limit <host>
-   ssh ansible-controller run apply --limit <host>
-   ```
+```sh
+ssh ansible-controller sync
+ssh ansible-controller run check --limit <host>
+ssh ansible-controller run apply --limit <host>
+ssh ansible-controller run verify --limit <host>
+```
 
 A bump to `ansible-core`, `uv` or a collection takes effect at `sync`. Follow it with `run check` with no `--limit`. A change to `scripts/` reaches `113` only at `run apply --limit ansible-controller`.
 
@@ -414,11 +483,252 @@ During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands i
 
 1. On the work laptop, delete `homelab-work` and `homelab-work.pub` from `.ssh` and the `Host ansible-controller` block from `.ssh\config`.
 
+## Backups
+
+Every guest is backed up at 23:30 to Proxmox Backup Server (PBS), VM `217`. PBS stores the backups on Holocron over NFS, so they survive losing the Proxmox host.
+
+PBS is set up by hand from these steps and is not managed by this repo: the controller is restored from PBS, so PBS has to be rebuildable without Ansible. It is not in the `ansible` pool, so the controller's token can't touch it.
+
+|                         |                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| VM                      | `217`, name `pbs`, 2 cores, 4 GB RAM, 32 GB disk                                       |
+| Address                 | `pbs.hjem.sh`, `192.168.1.122`, MAC `BC:24:11:B4:B5:EA`                                |
+| Web UI                  | `https://pbs.hjem.sh` (through Caddy) or `https://192.168.1.122:8007`, user `root@pam` |
+| Datastore               | `homelab` at `/mnt/pbs/homelab`, on Holocron's `proxmox-backup-server` share           |
+| Proxmox storage         | `pbs`, token `pve@pbs!pve`                                                             |
+| Retention               | 14 daily, 8 weekly, 6 monthly                                                          |
+| In the password manager | PBS root password, token secret, PBS fingerprint                                       |
+
+The steps below set it up from scratch. After losing the Proxmox host, follow them too, with the changes in "After losing the Proxmox host".
+
+### 1. Holocron: the share
+
+Skip this if the share already exists (after losing only the Proxmox host, it does).
+
+1. Shares → Add Share, name `proxmox-backup-server`.
+1. Primary storage: the array (or one pool). Secondary storage: **none**, so the mover never moves the backup files. Don't touch the share from Unraid afterwards (no unBalance, no scripts).
+1. NFS: Export **Yes**, Security **Private**, Rule:
+
+   ```text
+   192.168.1.122(sec=sys,rw,no_root_squash)
+   ```
+
+   `no_root_squash` is required: PBS creates the datastore as root and hands it to its `backup` user (uid 34). Without it, creating the datastore fails with `EPERM`.
+
+1. Check in the Unraid terminal that the line has `no_root_squash` and no `all_squash`:
+
+   ```sh
+   grep proxmox-backup-server /etc/exports
+   ```
+
+### 2. Proxmox host: create `217`
+
+As root on the Proxmox host (`ssh root@192.168.1.100`). Take the ISO name and SHA256 from https://www.proxmox.com/downloads/proxmox-backup-server and compare the checksum:
+
+```sh
+cd /var/lib/vz/template/iso
+wget https://enterprise.proxmox.com/iso/proxmox-backup-server_<version>.iso
+sha256sum proxmox-backup-server_<version>.iso
+```
+
+```sh
+qm create 217 --name pbs --ostype l26 --machine q35 --bios ovmf \
+  --efidisk0 local-zfs:1,efitype=4m,pre-enrolled-keys=0 \
+  --cpu host --cores 2 --memory 4096 --balloon 0 \
+  --scsihw virtio-scsi-single --scsi0 local-zfs:32,iothread=1,discard=on \
+  --net0 virtio=BC:24:11:B4:B5:EA,bridge=vmbr0,firewall=1 \
+  --ide2 local:iso/proxmox-backup-server_<version>.iso,media=cdrom \
+  --boot 'order=scsi0;ide2' --agent 1 --onboot 1
+qm start 217
+```
+
+### 3. PBS: the installer
+
+Open `217`'s console in the Proxmox web UI and install with:
+
+1. Target disk: the 32 GB disk, ext4.
+1. Root password: a new one, saved in the password manager.
+1. Hostname `pbs.hjem.sh`, IP `192.168.1.122/24`, gateway `192.168.1.1`, DNS `192.168.1.101`.
+
+After it reboots, remove the ISO on the Proxmox host:
+
+```sh
+qm set 217 --ide2 none
+```
+
+### 4. UniFi: reserve `192.168.1.122`
+
+Skip this on a rebuild: the reservation is already there. PBS sets its address itself; the reservation only stops DHCP from handing `.122` to something else.
+
+1. Network → Client Devices → the client with MAC `bc:24:11:b4:b5:ea`.
+1. Settings → IP Settings → Fixed IP Address `192.168.1.122`, name `pbs`, Apply.
+
+### 5. PBS: updates
+
+In the web UI (`https://192.168.1.122:8007`, `root@pam`):
+
+1. Administration → Repositories: disable both `enterprise` repositories, Add → `No-Subscription`.
+1. Administration → Updates → Refresh, then Upgrade. Reboot if it asks.
+1. Remove the subscription popup with the same apt hook as the Proxmox host. It re-patches the UI after every update of `proxmox-widget-toolkit`. From the Proxmox host (asks for PBS's root password twice):
+
+   ```sh
+   scp /etc/apt/apt.conf.d/no-nag-script root@192.168.1.122:/etc/apt/apt.conf.d/
+   ssh root@192.168.1.122 'apt-get install --reinstall -y proxmox-widget-toolkit && grep -c NoMoreNagging /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js && systemctl restart proxmox-backup-proxy'
+   ```
+
+   If the host has no hook yet (a fresh Proxmox install), create it as in "Remove the subscription popup" in `docs/proxmox/proxmox.md` of the `homelab` repo. Reload the UI with Ctrl+Shift+R.
+
+### 6. PBS: the datastore
+
+In the web UI under Administration → Shell (or SSH as root):
+
+```sh
+apt install -y qemu-guest-agent
+systemctl start qemu-guest-agent
+mkdir -p /mnt/pbs
+echo '192.168.1.30:/mnt/user/proxmox-backup-server /mnt/pbs nfs _netdev,hard 0 0' >> /etc/fstab
+systemctl daemon-reload
+mount /mnt/pbs
+touch /mnt/pbs/test && rm /mnt/pbs/test
+proxmox-backup-manager datastore create homelab /mnt/pbs/homelab
+```
+
+It must end with `Access time update check successful.` and `TASK OK`. If the atime check fails, use the disk path (`/mnt/diskN/proxmox-backup-server`) in the export and in fstab instead of `/mnt/user/...`.
+
+### 7. PBS: jobs, user and token
+
+Prune at 12:00, garbage collection at 12:30 and verify on Sundays at 13:00, all outside the 23:30 backup and the night's updates:
+
+```sh
+proxmox-backup-manager prune-job create homelab-prune --store homelab --schedule '12:00' \
+  --keep-daily 14 --keep-weekly 8 --keep-monthly 6
+proxmox-backup-manager datastore update homelab --gc-schedule '12:30'
+proxmox-backup-manager verify-job create homelab-verify --store homelab --schedule 'sun 13:00' \
+  --ignore-verified true --outdated-after 30
+```
+
+The user and token that Proxmox backs up with. A token only gets the rights its user also has, so both get the permission:
+
+```sh
+proxmox-backup-manager user create pve@pbs
+proxmox-backup-manager user generate-token pve@pbs pve
+proxmox-backup-manager acl update /datastore/homelab DatastoreBackup --auth-id 'pve@pbs'
+proxmox-backup-manager acl update /datastore/homelab DatastoreBackup --auth-id 'pve@pbs!pve'
+proxmox-backup-manager cert info | grep -i fingerprint
+```
+
+`generate-token` shows the secret only once. Save it and the fingerprint in the password manager.
+
+### 8. Proxmox host: storage and backup job
+
+As root on the Proxmox host:
+
+```sh
+pvesm add pbs pbs --server 192.168.1.122 --datastore homelab \
+  --username 'pve@pbs!pve' --password '<token secret>' \
+  --fingerprint '<fingerprint>' --content backup
+pvesm status --storage pbs
+```
+
+The status must say `active`. Then the backup job: every guest except PBS itself (`217`, it is rebuilt from these steps, not restored) and `901`, mail on failure, retention left to PBS:
+
+```sh
+pvesh create /cluster/backup --schedule '23:30' --storage pbs --all 1 --exclude 217,901 \
+  --mode snapshot --prune-backups keep-all=1 --notes-template '{{guestname}}' \
+  --mailto <your email> --mailnotification failure --enabled 1
+pvesh get /cluster/backup
+```
+
+### 9. Check
+
+1. Test one small guest now instead of waiting for 23:30. It must end with `Backup job finished successfully`:
+
+   ```sh
+   vzdump 114 --storage pbs --mode snapshot
+   ```
+
+1. The next morning, in the PBS web UI under Datastore → `homelab` → Content: every guest has a backup from 23:30.
+
+### 10. PBS: mail and update notices
+
+PBS is updated by hand: Administration → Updates → Upgrade in the web UI, then a reboot if a new kernel came in, outside 23:30 and 12:00–13:00. PBS only mails about pending updates with a subscription, so a timer asks for it at 05:00.
+
+1. Configuration → Notifications: disable `mail-to-root` and `default-matcher`. Add an SMTP target `fastmail` (`smtp.fastmail.com`, TLS, your username and app password, from `pbs@<your domain>`, recipient `root@pam`) and a matcher `fastmail-matcher` (match all, target `fastmail`).
+1. Configuration → Access Control → User Management → `root@pam` → E-Mail: your address. Then Test on the `fastmail` target.
+1. In the shell, the daily check. It runs `apt update` and mails each new package version once:
+
+   ```sh
+   cat > /etc/systemd/system/pbs-update-notify.service <<'EOF'
+   [Unit]
+   Description=Refresh apt and mail new PBS package updates
+   After=network-online.target
+
+   [Service]
+   Type=oneshot
+   ExecStart=/usr/sbin/proxmox-backup-debug api create /nodes/localhost/apt/update --notify true
+   EOF
+   cat > /etc/systemd/system/pbs-update-notify.timer <<'EOF'
+   [Unit]
+   Description=Daily PBS update check with mail
+
+   [Timer]
+   OnCalendar=*-*-* 05:00:00
+   Persistent=false
+
+   [Install]
+   WantedBy=timers.target
+   EOF
+   systemctl daemon-reload
+   systemctl enable --now pbs-update-notify.timer
+   systemctl start pbs-update-notify.service
+   systemctl status pbs-update-notify.service --no-pager
+   ```
+
+   The status must show `TASK OK` and `status=0/SUCCESS`.
+
+### After losing the Proxmox host
+
+The backups are still on Holocron. Rebuild in this order:
+
+1. Install Proxmox. Do "Proxmox host: user, token and pool for Ansible" from "Bootstrap": it gives a new token secret and the host a new CA.
+1. Do steps 2, 3 and 5 above (create `217`, install, updates). Skip 1 and 4: the share and the reservation still exist.
+1. Step 6, but attach the existing datastore instead of creating a new one, with `--reuse-datastore true` on the last command:
+
+   ```sh
+   proxmox-backup-manager datastore create homelab /mnt/pbs/homelab --reuse-datastore true
+   ```
+
+1. Step 7 in full: the jobs, the user and a **new** token (the old secret went with the old PBS). Save the new secret and fingerprint.
+1. Steps 8 and 10: storage, backup job, mail and update notices.
+1. On the Proxmox host, list the backups and restore `113` first, with its own ID. `113` is not in the `ansible` pool:
+
+   ```sh
+   pvesm list pbs
+   pct restore 113 pbs:backup/ct/113/<time> --storage local-zfs
+   pct start 113
+   ```
+
+1. On the laptop, point the repo at the new host, as in "Laptop: CA and vault": copy the new CA into `files/pve-root-ca.pem`, put the new token secret in the vault (`.venv/bin/ansible-vault edit inventory/group_vars/all/vault.yml`), commit, push, then `ssh ansible-controller sync`.
+1. Restore every other guest with its own ID, **into the `ansible` pool** (the pool membership isn't in the backup, and without it the controller's token can't manage the guest). Restore the VM template `903` first and re-run its ACL line from "Bootstrap" (`pveum acl modify /vms/903 ...`):
+
+   ```sh
+   pct restore <id> pbs:backup/ct/<id>/<time> --storage local-zfs --pool ansible
+   qmrestore pbs:backup/vm/<id>/<time> <id> --storage local-zfs --pool ansible
+   ```
+
+   Start the guests (`pct start <id>` / `qm start <id>`), or reboot the host so `onboot` starts them in order.
+
+1. Check from the laptop. It should show nothing to do:
+
+   ```sh
+   ssh ansible-controller run check
+   ```
+
 ## Accepted risks
 
 1. The controller key is root on every LXC and passwordless-sudo `emil` on every VM. Whoever holds `113` holds the fleet. SSH to `113` is key-only, from `.103`, `.42`, `.102` and `.225`.
 1. The vault password sits in plain text in `/home/ansible/.vault-pass` (0600). It and the controller key reach Holocron in `113`'s nightly backup.
-1. The `207` key has no passphrase. It can run `sync`, `check` and `apply`, not `provision` or `migrate`. With `207`'s account-wide `gh` token, an agent could push to `main` and apply it; "I merge" is a process rule, not a technical one.
+1. The `207` key has no passphrase. It can run `sync`, `check` and `apply`, not `provision` or `migrate`. With `207`'s account-wide `gh` token, an agent can't push to `main` (the ruleset requires a PR with a passing `lint`), but it can open and merge its own PR and then apply it; "I merge" is a process rule, not a technical one.
 1. New guests' host keys are trusted on first scan, over the LAN, right after creation.
 1. The token's `VM.Allocate` on the pool can delete pool guests. No task uses `state: absent`.
 1. VMs have no host firewall. SSH there is key-only but reachable from the whole LAN.
@@ -428,7 +738,10 @@ During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands i
 1. Nextcloud AIO updates itself daily, as upstream recommends.
 1. The repo is public: IPs, MACs and public keys are visible, and the vault files can be attacked offline. The vault password must be long and random.
 1. Python packages are pinned by version, not hash. Galaxy collections are not signature-checked.
-1. A merged Renovate PR goes live on the next `apply`, breaking changes included.
+1. A merged Renovate PR goes live on the next `apply`, breaking changes included. Minor, patch and digest updates merge without review; `lint` checks syntax and style, not whether the new version works.
+1. Third-party apt repos (Docker, Jellyfin, NodeSource) can ship a major through unattended-upgrades, outside Renovate.
+1. Backups are on Holocron, in the same house, with no off-site copy. PBS doesn't encrypt them; Holocron's disk encryption covers stolen or discarded disks, not access to the running Holocron or the share.
+1. PBS doesn't hold the NFS-backed app data (Immich library, Nextcloud data, books) or Jellyfin's media; backing those up is Holocron's job.
 
 ## Resources
 

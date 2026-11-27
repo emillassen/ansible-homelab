@@ -1,6 +1,5 @@
 ---
 vmid: 214
-legacy_host: paperless-old
 cores: 4
 memory: 4096
 disk_gb: 32
@@ -9,6 +8,16 @@ mac_production: "BC:24:11:32:F1:0B"
 ip_production: 192.168.1.119
 ip_static: false
 startup: ""
-net_production: false
+net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
 ansible_host: 192.168.1.119
+# PAPERLESS_TRUSTED_PROXIES trusts X-Forwarded-For, so only Caddy may reach the UI.
+docker_user_filter:
+  - {port: 8000, allow: 192.168.1.88}
+
+# run verify (playbooks/verify.yml)
+verify_http:
+  # Django answers 400 to a Host outside PAPERLESS_URL.
+  - url: http://127.0.0.1:8000/
+    headers: {Host: paperless.hjem.sh}
+    status: 302

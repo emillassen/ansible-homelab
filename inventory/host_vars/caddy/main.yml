@@ -1,6 +1,5 @@
 ---
 vmid: 119
-legacy_host: caddy-old
 cores: 2
 memory: 2048
 disk_gb: 8
@@ -19,3 +18,10 @@ ufw_allow:
     proto: tcp
   - port: "443"
     proto: udp
+
+# run verify (playbooks/verify.yml)
+verify_units: [caddy]
+verify_http:
+  - url: http://127.0.0.1/
+    status: 308
+verify_tcp: [443]

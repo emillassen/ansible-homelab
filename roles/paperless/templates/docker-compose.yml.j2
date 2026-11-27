@@ -1,0 +1,73 @@
+# Managed by Ansible (roles/paperless).
+# PAPERLESS_DB_PASSWORD and PAPERLESS_SECRET_KEY come from .env, generated once on this guest.
+services:
+  broker:
+    container_name: valkey
+    image: docker.io/valkey/valkey:{{ paperless_valkey_version }}
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  db:
+    container_name: postgres
+    image: docker.io/library/postgres:{{ paperless_postgres_version }}
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${PAPERLESS_DB_PASSWORD}
+
+  webserver:
+    container_name: paperless-ngx
+    image: ghcr.io/paperless-ngx/paperless-ngx:{{ paperless_version }}
+    restart: unless-stopped
+    depends_on:
+      - db
+      - broker
+      - gotenberg
+      - tika
+    ports:
+      - "0.0.0.0:8000:8000"
+    volumes:
+      - data:/usr/src/paperless/data
+      - media:/usr/src/paperless/media
+      - ./export:/usr/src/paperless/export
+      - ./consume:/usr/src/paperless/consume
+    environment:
+      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_DBHOST: db
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+      PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+      PAPERLESS_CONSUMER_POLLING_INTERVAL: 300
+      PAPERLESS_URL: {{ paperless_url }}
+      # Caddy, for allauth's login rate limiting (without it v3 can 403 on login).
+      PAPERLESS_TRUSTED_PROXIES: 192.168.1.88
+      PAPERLESS_TIME_ZONE: Europe/Copenhagen
+      PAPERLESS_OCR_LANGUAGE: dan
+      PAPERLESS_OCR_LANGUAGES: dan eng
+
+  gotenberg:
+    container_name: gotenberg
+    image: docker.io/gotenberg/gotenberg:{{ paperless_gotenberg_version }}
+    restart: unless-stopped
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=^file:///tmp/.*"
+
+  tika:
+    container_name: tika
+    image: docker.io/apache/tika:{{ paperless_tika_version }}
+    restart: unless-stopped
+
+volumes:
+  data:
+  media:
+  pgdata:
+  redisdata:

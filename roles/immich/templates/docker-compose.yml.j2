@@ -1,0 +1,62 @@
+# Managed by Ansible (roles/immich). Follows Immich's docker-compose.yml for {{ immich_version }}.
+# db.env (DB_PASSWORD, POSTGRES_PASSWORD) is generated once on this guest.
+name: immich
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:{{ immich_version }}
+    volumes:
+      - {{ immich_upload }}:/data
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - immich.env
+      - db.env
+    ports:
+      - "0.0.0.0:2283:2283"
+    depends_on:
+      - redis
+      - database
+    restart: always
+    healthcheck:
+      disable: false
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:{{ immich_version }}
+    volumes:
+      - model-cache:/cache
+    env_file:
+      - immich.env
+    environment:
+      # Upstream's compose sets it: the newer exports of the same models.
+      MACHINE_LEARNING_MODEL_REVISION: v2
+    restart: always
+    healthcheck:
+      disable: false
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:{{ immich_valkey_version }}
+    healthcheck:
+      test: redis-cli ping || exit 1
+    restart: always
+
+  database:
+    container_name: immich_postgres
+    image: {{ immich_postgres_image }}
+    env_file:
+      - db.env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    shm_size: 128mb
+    restart: always
+    healthcheck:
+      disable: false
+
+volumes:
+  model-cache:

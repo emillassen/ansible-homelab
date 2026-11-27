@@ -1,0 +1,15 @@
+# Managed by Ansible (roles/audiobookshelf).
+services:
+  audiobookshelf:
+    container_name: audiobookshelf
+    image: ghcr.io/advplyr/audiobookshelf:{{ audiobookshelf_version }}
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:13378:80"
+    volumes:
+      - /mnt/audiobooks:/audiobooks
+      - /mnt/podcasts:/podcasts
+      - ./config:/config
+      - ./metadata:/metadata
+    environment:
+      - TZ=Europe/Copenhagen

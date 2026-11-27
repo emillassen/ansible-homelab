@@ -1,0 +1,13 @@
+---
+# The data is copied, so this can't be older than the version that last wrote it.
+# renovate: datasource=docker depName=ghcr.io/yeraze/meshmonitor
+meshmonitor_version: "4.18.0"
+meshmonitor_project: /home/emil/meshmonitor
+# The XIAO nRF52840 (MeshCore companion), passed through by the root paste in the README.
+meshmonitor_device: /dev/serial/by-id/usb-Seeed_Studio_XIAO_nRF52840_F1FE13AC5544BFF4-if00
+# The entrypoint drops to node (uid 1000), who owns data/.
+meshmonitor_uid: "1000"
+# MeshMonitor stays stopped until `run migrate` has copied data/ and the session secret.
+meshmonitor_marker: "{{ meshmonitor_project }}/data/.migrated"
+# What `run migrate` copies from. meshmonitor-old overrides it: its data is in a named volume.
+meshmonitor_export_data: "{{ meshmonitor_project }}/data"

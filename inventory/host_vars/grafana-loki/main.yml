@@ -1,20 +1,24 @@
 ---
 vmid: 213
-legacy_host: grafana-loki-old
 cores: 4
-memory: 8192
+memory: 4096
 disk_gb: 32
 mac_temp: "BC:24:11:23:3F:46"
 mac_production: "BC:24:11:A4:56:80"
 ip_production: 192.168.1.118
 ip_static: false
 startup: ""
-net_production: false
+net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
-ansible_host: 192.168.1.123
+ansible_host: 192.168.1.118
 # Logs locally (json-file), so Loki never logs to itself through Caddy.
 docker_loki_default: false
 # Published ports only Caddy may reach.
 docker_user_filter:
   - {port: 3100, allow: 192.168.1.88}
   - {port: 3000, allow: 192.168.1.88}
+
+# run verify (playbooks/verify.yml)
+verify_http:
+  - url: http://127.0.0.1:3000/api/health
+  - url: http://127.0.0.1:3100/ready

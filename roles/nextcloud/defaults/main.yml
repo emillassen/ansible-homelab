@@ -1,0 +1,28 @@
+---
+# Nextcloud AIO: the mastercontainer creates and updates every other container itself
+# (the brief's one self-updater), so only its image is set here. The beta channel, as
+# before: AIO doesn't support going back from beta to latest.
+nextcloud_aio_image: ghcr.io/nextcloud-releases/all-in-one:beta
+nextcloud_project: /home/emil/nextcloud
+# The data directory (and AIO's unused backup folder) on Holocron. Its NFS rule
+# matches the production address only. A hard mount, as the guide says.
+nextcloud_mnt: /mnt/proxmox-nextcloud
+nextcloud_datadir: "{{ nextcloud_mnt }}/nextcloud"
+nextcloud_nfs:
+  - {src: "192.168.1.30:/mnt/user/proxmox-nextcloud", path: "{{ nextcloud_mnt }}"}
+# Written once the volumes are in place; the mastercontainer stays stopped until then.
+nextcloud_marker: "{{ nextcloud_project }}/.migrated"
+# The Docker volumes copied by `run migrate`. Not nextcloud_aio_database: the database
+# moves as the dump AIO's database container writes when it stops
+# (nextcloud_aio_database_dump), and AIO restores it into the new, empty volume.
+# Not Redis (a cache) or the empty volumes of unused community containers.
+nextcloud_volumes:
+  - nextcloud_aio_mastercontainer
+  - nextcloud_aio_nextcloud
+  - nextcloud_aio_database_dump
+  - nextcloud_aio_apache
+  - nextcloud_aio_eurooffice
+  - nextcloud_aio_eurooffice_data
+# Same filesystem as /var/lib/docker, so the volumes are moved, not copied.
+nextcloud_restore_dir: /var/tmp/nextcloud-restore
+nextcloud_volume_root: /var/lib/docker/volumes

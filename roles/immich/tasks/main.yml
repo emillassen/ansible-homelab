@@ -1,0 +1,78 @@
+---
+- name: Mount the library share
+  ansible.builtin.include_role:
+    name: nfs_automount
+  vars:
+    nfs_automount_shares: "{{ immich_nfs }}"
+
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ immich_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+- name: Write the environment file
+  ansible.builtin.template:
+    src: immich.env.j2
+    dest: "{{ immich_project }}/immich.env"
+    owner: emil
+    group: emil
+    mode: "0644"
+
+# Only the containers use it, so it's made here, never copied or vaulted.
+# Postgres reads it once, when it creates the database.
+- name: Pick a database password
+  ansible.builtin.set_fact:
+    immich_db_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}"
+  no_log: true
+
+- name: Generate the database password
+  ansible.builtin.copy:
+    content: |
+      DB_PASSWORD={{ immich_db_password }}
+      POSTGRES_PASSWORD={{ immich_db_password }}
+    dest: "{{ immich_project }}/db.env"
+    owner: emil
+    group: emil
+    mode: "0600"
+    force: false
+  no_log: true
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ immich_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: immich_compose
+
+- name: Check for the restored database
+  ansible.builtin.stat:
+    path: "{{ immich_marker }}"
+  register: immich_migrated
+
+# Before the restore only the empty database runs; the server would set up a
+# new, empty install in it.
+- name: Run the database
+  community.docker.docker_compose_v2:
+    project_src: "{{ immich_project }}"
+    services: [database]
+    pull: missing
+    state: present
+  when:
+    - not immich_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and immich_compose is not changed)
+
+# Without the library share the server would find every asset missing.
+- name: Run Immich once its database is restored and the library is mounted
+  community.docker.docker_compose_v2:
+    project_src: "{{ immich_project }}"
+    pull: missing
+    state: present
+  when:
+    - net_production
+    - immich_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and immich_compose is not changed)

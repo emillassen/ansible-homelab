@@ -1,0 +1,49 @@
+---
+# NFS shares as systemd automounts from fstab. Holocron's NFS rules match the
+# production address, so the automounts are only started with net_production.
+
+# In fstab only; systemd makes an automount of each and creates the mount points.
+# (Managing the mount points here would chmod the share roots once mounted.)
+- name: Add the NFS shares to fstab
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: nfs
+    opts: "{{ nfs_automount_opts }}"
+    state: present
+  loop: "{{ nfs_automount_shares }}"
+  register: nfs_automount_fstab
+
+- name: Reload systemd for the new fstab
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: nfs_automount_fstab is changed
+
+# systemd escapes the path (a "-" becomes "\x2d"), so ask it for the unit name.
+- name: Work out the automount unit names
+  ansible.builtin.command:
+    cmd: systemd-escape --path --suffix=automount {{ item.path | quote }}
+  loop: "{{ nfs_automount_shares }}"
+  register: nfs_automount_units
+  changed_when: false
+  check_mode: false
+
+- name: Start the automounts
+  ansible.builtin.systemd_service:
+    name: "{{ item.stdout }}"
+    state: started
+  loop: "{{ nfs_automount_units.results }}"
+  loop_control:
+    label: "{{ item.stdout }}"
+  when: net_production and not ansible_check_mode
+
+# Listing the directory triggers the automount; until then findmnt sees only autofs.
+# A hard mount on a dead server blocks forever, hence the timeout.
+- name: Check that the shares mount
+  ansible.builtin.shell:
+    cmd: >-
+      timeout 30 ls {{ item.path | quote }} > /dev/null &&
+      test "$(findmnt --mountpoint {{ item.path | quote }} --types nfs,nfs4 --noheadings --output SOURCE)" = {{ item.src | quote }}
+  changed_when: false
+  loop: "{{ nfs_automount_shares }}"
+  when: net_production and not ansible_check_mode

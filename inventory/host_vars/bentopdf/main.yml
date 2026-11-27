@@ -1,6 +1,5 @@
 ---
 vmid: 121
-legacy_host: bentopdf-old
 cores: 1
 memory: 512
 disk_gb: 4
@@ -17,3 +16,10 @@ ufw_allow:
     proto: tcp
   - port: "8080"
     proto: tcp
+
+# run verify (playbooks/verify.yml)
+verify_units: [nginx]
+verify_http:
+  - url: https://127.0.0.1:8443/
+  - url: http://127.0.0.1:8080/
+    status: 301

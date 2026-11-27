@@ -1,0 +1,34 @@
+# Managed by Ansible (roles/miniflux).
+# MINIFLUX_DB_PASSWORD comes from .env, generated once on this guest.
+services:
+  miniflux:
+    container_name: miniflux
+    image: miniflux/miniflux:{{ miniflux_version }}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/bin/miniflux", "-healthcheck", "auto"]
+    ports:
+      - "0.0.0.0:80:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://miniflux:${MINIFLUX_DB_PASSWORD}@db/miniflux?sslmode=disable
+      - RUN_MIGRATIONS=1
+      - TRUSTED_REVERSE_PROXY_NETWORKS=192.168.1.88/32
+  db:
+    container_name: db
+    image: postgres:{{ miniflux_postgres_version }}
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=miniflux
+      - POSTGRES_PASSWORD=${MINIFLUX_DB_PASSWORD}
+      - POSTGRES_DB=miniflux
+    volumes:
+      - miniflux-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "miniflux"]
+      interval: 10s
+      start_period: 30s
+volumes:
+  miniflux-db:
