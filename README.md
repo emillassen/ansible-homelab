@@ -319,11 +319,11 @@ Before each rebuild, the report lists the data to copy, how, and how it will be 
 
    Then revert the `host_vars` commit.
 
-A rebuild is done when it's accepted and has a backup (the nightly vzdump picks up new IDs). The old guest stays stopped until you delete it.
+A rebuild is done when it's accepted and has a backup (the 23:30 PBS job picks up new IDs). The old guest stays stopped until you delete it.
 
 ### A lost guest
 
-Restore it from its nightly vzdump on Holocron; that brings the data and the `.migrated` markers back, and `run check --limit <host>` should then show nothing to do.
+Restore it from its nightly PBS backup (see "Backups"); that brings the data and the `.migrated` markers back, and `run check --limit <host>` should then show nothing to do.
 
 Provisioning it again with no old guest to copy from (a fresh install) leaves each app with copied data stopped: its start is gated on `.migrated` in its data directory (the role's `*_marker` default or "Check for the migrated data" task). Once the data is in place, or to start empty on purpose, create the marker on the guest and apply:
 
@@ -426,6 +426,23 @@ During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands i
 
 1. On the work laptop, delete `homelab-work` and `homelab-work.pub` from `.ssh` and the `Host ansible-controller` block from `.ssh\config`.
 
+## Backups
+
+Proxmox Backup Server, VM `217` (`pbs.hjem.sh`, `192.168.1.122`, MAC `BC:24:11:B4:B5:EA`). It is installed by hand from the PBS ISO and is not managed by this repo: the controller is restored from it, so it has to be rebuildable without Ansible. It is not in the `ansible` pool.
+
+1. Datastore `homelab` at `/mnt/pbs/homelab`: the NFS share `proxmox-backup-server` on Holocron, exported to `.122` only with `no_root_squash` (PBS chowns the chunk store to `backup`, uid 34). The share has no secondary storage, so the mover never touches it. fstab: `192.168.1.30:/mnt/user/proxmox-backup-server /mnt/pbs nfs _netdev,hard 0 0`.
+1. Jobs on PBS: prune 12:00 (14 daily, 8 weekly, 6 monthly), garbage collection 12:30, verify Sundays 13:00.
+1. Proxmox storage `pbs`, token `pve@pbs!pve` (`DatastoreBackup` on `/datastore/homelab` for the user and the token). The secret and the fingerprint are in the password manager.
+1. Backup job at 23:30: every guest except `217` and `901`, snapshot mode, retention left to PBS, mail on failure.
+
+### After losing the Proxmox host
+
+1. Install Proxmox and redo the host steps in "Bootstrap".
+1. Create `217` and install PBS from the ISO with the settings above (`qm create 217 --name pbs --ostype l26 --machine q35 --bios ovmf --efidisk0 local-zfs:1,efitype=4m,pre-enrolled-keys=0 --cpu host --cores 2 --memory 4096 --balloon 0 --scsihw virtio-scsi-single --scsi0 local-zfs:32,iothread=1,discard=on --net0 virtio=BC:24:11:B4:B5:EA,bridge=vmbr0,firewall=1 --ide2 local:iso/<pbs iso>,media=cdrom --boot 'order=scsi0;ide2' --agent 1 --onboot 1`).
+1. On PBS: the fstab line, `mount /mnt/pbs`, then add the existing datastore (`proxmox-backup-manager datastore create homelab /mnt/pbs/homelab --reuse-datastore true`), the user, a new token and the ACLs.
+1. On Proxmox: `pvesm add pbs pbs --server 192.168.1.122 --datastore homelab --username 'pve@pbs!pve' --password '<secret>' --fingerprint '<fingerprint>' --content backup`.
+1. Restore `113` first, then the other guests, with their original IDs.
+
 ## Accepted risks
 
 1. The controller key is root on every LXC and passwordless-sudo `emil` on every VM. Whoever holds `113` holds the fleet. SSH to `113` is key-only, from `.103`, `.42`, `.102` and `.225`.
@@ -441,6 +458,8 @@ During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands i
 1. The repo is public: IPs, MACs and public keys are visible, and the vault files can be attacked offline. The vault password must be long and random.
 1. Python packages are pinned by version, not hash. Galaxy collections are not signature-checked.
 1. A merged Renovate PR goes live on the next `apply`, breaking changes included.
+1. Backups are on Holocron, in the same house, with no off-site copy. PBS doesn't encrypt them; Holocron's disk encryption covers stolen or discarded disks, not access to the running Holocron or the share.
+1. PBS doesn't hold the NFS-backed app data (Immich library, Nextcloud data, books) or Jellyfin's media; backing those up is Holocron's job.
 
 ## Resources
 
