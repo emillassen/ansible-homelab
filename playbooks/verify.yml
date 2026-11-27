@@ -144,7 +144,9 @@
 
     - name: Note a needrestart that didn't run
       ansible.builtin.set_fact:
-        verify_problems: "{{ verify_problems + ['needrestart failed: ' ~ (verify_needrestart.stderr | default('') or verify_needrestart.msg | default('rc ' ~ verify_needrestart.rc))] }}"
+        verify_problems: "{{ verify_problems + ['needrestart failed: ' ~ verify_reason] }}"
+      vars:
+        verify_reason: "{{ verify_needrestart.stderr | default('') or verify_needrestart.msg | default('rc ' ~ verify_needrestart.rc) }}"
       when: verify_needrestart.rc | default(-1) != 0
 
     # needrestart never restarts these itself (its override_rc); a reboot or a container
