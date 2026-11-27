@@ -511,6 +511,14 @@ In the web UI (`https://192.168.1.122:8007`, `root@pam`):
 
 1. Administration → Repositories: disable both `enterprise` repositories, Add → `No-Subscription`.
 1. Administration → Updates → Refresh, then Upgrade. Reboot if it asks.
+1. Remove the subscription popup with the same apt hook as the Proxmox host. It re-patches the UI after every update of `proxmox-widget-toolkit`. From the Proxmox host (asks for PBS's root password twice):
+
+   ```sh
+   scp /etc/apt/apt.conf.d/no-nag-script root@192.168.1.122:/etc/apt/apt.conf.d/
+   ssh root@192.168.1.122 'apt-get install --reinstall -y proxmox-widget-toolkit && grep -c NoMoreNagging /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js && systemctl restart proxmox-backup-proxy'
+   ```
+
+   If the host has no hook yet (a fresh Proxmox install), create it as in "Remove the subscription popup" in `docs/proxmox/proxmox.md` of the `homelab` repo. Reload the UI with Ctrl+Shift+R.
 
 ### 6. PBS: the datastore
 
