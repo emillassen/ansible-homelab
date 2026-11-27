@@ -428,20 +428,197 @@ During the rebuild, a key without a passphrase at `~/.ssh/homelab-temp` stands i
 
 ## Backups
 
-Proxmox Backup Server, VM `217` (`pbs.hjem.sh`, `192.168.1.122`, MAC `BC:24:11:B4:B5:EA`). It is installed by hand from the PBS ISO and is not managed by this repo: the controller is restored from it, so it has to be rebuildable without Ansible. It is not in the `ansible` pool.
+Every guest is backed up at 23:30 to Proxmox Backup Server (PBS), VM `217`. PBS stores the backups on Holocron over NFS, so they survive losing the Proxmox host.
 
-1. Datastore `homelab` at `/mnt/pbs/homelab`: the NFS share `proxmox-backup-server` on Holocron, exported to `.122` only with `no_root_squash` (PBS chowns the chunk store to `backup`, uid 34). The share has no secondary storage, so the mover never touches it. fstab: `192.168.1.30:/mnt/user/proxmox-backup-server /mnt/pbs nfs _netdev,hard 0 0`.
-1. Jobs on PBS: prune 12:00 (14 daily, 8 weekly, 6 monthly), garbage collection 12:30, verify Sundays 13:00.
-1. Proxmox storage `pbs`, token `pve@pbs!pve` (`DatastoreBackup` on `/datastore/homelab` for the user and the token). The secret and the fingerprint are in the password manager.
-1. Backup job at 23:30: every guest except `217` and `901`, snapshot mode, retention left to PBS, mail on failure.
+PBS is set up by hand from these steps and is not managed by this repo: the controller is restored from PBS, so PBS has to be rebuildable without Ansible. It is not in the `ansible` pool, so the controller's token can't touch it.
+
+| | |
+| --- | --- |
+| VM | `217`, name `pbs`, 2 cores, 4 GB RAM, 32 GB disk |
+| Address | `pbs.hjem.sh`, `192.168.1.122`, MAC `BC:24:11:B4:B5:EA` |
+| Web UI | `https://192.168.1.122:8007`, user `root@pam` |
+| Datastore | `homelab` at `/mnt/pbs/homelab`, on Holocron's `proxmox-backup-server` share |
+| Proxmox storage | `pbs`, token `pve@pbs!pve` |
+| Retention | 14 daily, 8 weekly, 6 monthly |
+| In the password manager | PBS root password, token secret, PBS fingerprint |
+
+The steps below set it up from scratch. After losing the Proxmox host, follow them too, with the changes in "After losing the Proxmox host".
+
+### 1. Holocron: the share
+
+Skip this if the share already exists (after losing only the Proxmox host, it does).
+
+1. Shares → Add Share, name `proxmox-backup-server`.
+1. Primary storage: the array (or one pool). Secondary storage: **none**, so the mover never moves the backup files. Don't touch the share from Unraid afterwards (no unBalance, no scripts).
+1. NFS: Export **Yes**, Security **Private**, Rule:
+
+   ```text
+   192.168.1.122(sec=sys,rw,no_root_squash)
+   ```
+
+   `no_root_squash` is required: PBS creates the datastore as root and hands it to its `backup` user (uid 34). Without it, creating the datastore fails with `EPERM`.
+1. Check in the Unraid terminal that the line has `no_root_squash` and no `all_squash`:
+
+   ```sh
+   grep proxmox-backup-server /etc/exports
+   ```
+
+### 2. Proxmox host: create `217`
+
+As root on the Proxmox host (`ssh root@192.168.1.100`). Take the ISO name and SHA256 from https://www.proxmox.com/downloads/proxmox-backup-server and compare the checksum:
+
+```sh
+cd /var/lib/vz/template/iso
+wget https://enterprise.proxmox.com/iso/proxmox-backup-server_<version>.iso
+sha256sum proxmox-backup-server_<version>.iso
+```
+
+```sh
+qm create 217 --name pbs --ostype l26 --machine q35 --bios ovmf \
+  --efidisk0 local-zfs:1,efitype=4m,pre-enrolled-keys=0 \
+  --cpu host --cores 2 --memory 4096 --balloon 0 \
+  --scsihw virtio-scsi-single --scsi0 local-zfs:32,iothread=1,discard=on \
+  --net0 virtio=BC:24:11:B4:B5:EA,bridge=vmbr0,firewall=1 \
+  --ide2 local:iso/proxmox-backup-server_<version>.iso,media=cdrom \
+  --boot 'order=scsi0;ide2' --agent 1 --onboot 1
+qm start 217
+```
+
+### 3. PBS: the installer
+
+Open `217`'s console in the Proxmox web UI and install with:
+
+1. Target disk: the 32 GB disk, ext4.
+1. Root password: a new one, saved in the password manager.
+1. Hostname `pbs.hjem.sh`, IP `192.168.1.122/24`, gateway `192.168.1.1`, DNS `192.168.1.101`.
+
+After it reboots, remove the ISO on the Proxmox host:
+
+```sh
+qm set 217 --ide2 none
+```
+
+### 4. UniFi: reserve `192.168.1.122`
+
+Skip this on a rebuild: the reservation is already there. PBS sets its address itself; the reservation only stops DHCP from handing `.122` to something else.
+
+1. Network → Client Devices → the client with MAC `bc:24:11:b4:b5:ea`.
+1. Settings → IP Settings → Fixed IP Address `192.168.1.122`, name `pbs`, Apply.
+
+### 5. PBS: updates
+
+In the web UI (`https://192.168.1.122:8007`, `root@pam`):
+
+1. Administration → Repositories: disable both `enterprise` repositories, Add → `No-Subscription`.
+1. Administration → Updates → Refresh, then Upgrade. Reboot if it asks.
+
+### 6. PBS: the datastore
+
+In the web UI under Administration → Shell (or SSH as root):
+
+```sh
+apt install -y qemu-guest-agent
+systemctl start qemu-guest-agent
+mkdir -p /mnt/pbs
+echo '192.168.1.30:/mnt/user/proxmox-backup-server /mnt/pbs nfs _netdev,hard 0 0' >> /etc/fstab
+systemctl daemon-reload
+mount /mnt/pbs
+touch /mnt/pbs/test && rm /mnt/pbs/test
+proxmox-backup-manager datastore create homelab /mnt/pbs/homelab
+```
+
+It must end with `Access time update check successful.` and `TASK OK`. If the atime check fails, use the disk path (`/mnt/diskN/proxmox-backup-server`) in the export and in fstab instead of `/mnt/user/...`.
+
+### 7. PBS: jobs, user and token
+
+Prune at 12:00, garbage collection at 12:30 and verify on Sundays at 13:00, all outside the 23:30 backup and the night's updates:
+
+```sh
+proxmox-backup-manager prune-job create homelab-prune --store homelab --schedule '12:00' \
+  --keep-daily 14 --keep-weekly 8 --keep-monthly 6
+proxmox-backup-manager datastore update homelab --gc-schedule '12:30'
+proxmox-backup-manager verify-job create homelab-verify --store homelab --schedule 'sun 13:00' \
+  --ignore-verified true --outdated-after 30
+```
+
+The user and token that Proxmox backs up with. A token only gets the rights its user also has, so both get the permission:
+
+```sh
+proxmox-backup-manager user create pve@pbs
+proxmox-backup-manager user generate-token pve@pbs pve
+proxmox-backup-manager acl update /datastore/homelab DatastoreBackup --auth-id 'pve@pbs'
+proxmox-backup-manager acl update /datastore/homelab DatastoreBackup --auth-id 'pve@pbs!pve'
+proxmox-backup-manager cert info | grep -i fingerprint
+```
+
+`generate-token` shows the secret only once. Save it and the fingerprint in the password manager.
+
+### 8. Proxmox host: storage and backup job
+
+As root on the Proxmox host:
+
+```sh
+pvesm add pbs pbs --server 192.168.1.122 --datastore homelab \
+  --username 'pve@pbs!pve' --password '<token secret>' \
+  --fingerprint '<fingerprint>' --content backup
+pvesm status --storage pbs
+```
+
+The status must say `active`. Then the backup job: every guest except PBS itself (`217`, it is rebuilt from these steps, not restored) and `901`, mail on failure, retention left to PBS:
+
+```sh
+pvesh create /cluster/backup --schedule '23:30' --storage pbs --all 1 --exclude 217,901 \
+  --mode snapshot --prune-backups keep-all=1 --notes-template '{{guestname}}' \
+  --mailto <your email> --mailnotification failure --enabled 1
+pvesh get /cluster/backup
+```
+
+### 9. Check
+
+1. Test one small guest now instead of waiting for 23:30. It must end with `Backup job finished successfully`:
+
+   ```sh
+   vzdump 114 --storage pbs --mode snapshot
+   ```
+
+1. The next morning, in the PBS web UI under Datastore → `homelab` → Content: every guest has a backup from 23:30.
 
 ### After losing the Proxmox host
 
-1. Install Proxmox and redo the host steps in "Bootstrap".
-1. Create `217` and install PBS from the ISO with the settings above (`qm create 217 --name pbs --ostype l26 --machine q35 --bios ovmf --efidisk0 local-zfs:1,efitype=4m,pre-enrolled-keys=0 --cpu host --cores 2 --memory 4096 --balloon 0 --scsihw virtio-scsi-single --scsi0 local-zfs:32,iothread=1,discard=on --net0 virtio=BC:24:11:B4:B5:EA,bridge=vmbr0,firewall=1 --ide2 local:iso/<pbs iso>,media=cdrom --boot 'order=scsi0;ide2' --agent 1 --onboot 1`).
-1. On PBS: the fstab line, `mount /mnt/pbs`, then add the existing datastore (`proxmox-backup-manager datastore create homelab /mnt/pbs/homelab --reuse-datastore true`), the user, a new token and the ACLs.
-1. On Proxmox: `pvesm add pbs pbs --server 192.168.1.122 --datastore homelab --username 'pve@pbs!pve' --password '<secret>' --fingerprint '<fingerprint>' --content backup`.
-1. Restore `113` first, then the other guests, with their original IDs.
+The backups are still on Holocron. Rebuild in this order:
+
+1. Install Proxmox. Do "Proxmox host: user, token and pool for Ansible" from "Bootstrap": it gives a new token secret and the host a new CA.
+1. Do steps 2, 3 and 5 above (create `217`, install, updates). Skip 1 and 4: the share and the reservation still exist.
+1. Step 6, but attach the existing datastore instead of creating a new one, with `--reuse-datastore true` on the last command:
+
+   ```sh
+   proxmox-backup-manager datastore create homelab /mnt/pbs/homelab --reuse-datastore true
+   ```
+
+1. Step 7 in full: the jobs, the user and a **new** token (the old secret went with the old PBS). Save the new secret and fingerprint.
+1. Step 8: storage and backup job.
+1. On the Proxmox host, list the backups and restore `113` first, with its own ID. `113` is not in the `ansible` pool:
+
+   ```sh
+   pvesm list pbs
+   pct restore 113 pbs:backup/ct/113/<time> --storage local-zfs
+   pct start 113
+   ```
+
+1. On the laptop, point the repo at the new host, as in "Laptop: CA and vault": copy the new CA into `files/pve-root-ca.pem`, put the new token secret in the vault (`.venv/bin/ansible-vault edit inventory/group_vars/all/vault.yml`), commit, push, then `ssh ansible-controller sync`.
+1. Restore every other guest with its own ID, **into the `ansible` pool** (the pool membership isn't in the backup, and without it the controller's token can't manage the guest). Restore the VM template `903` first and re-run its ACL line from "Bootstrap" (`pveum acl modify /vms/903 ...`):
+
+   ```sh
+   pct restore <id> pbs:backup/ct/<id>/<time> --storage local-zfs --pool ansible
+   qmrestore pbs:backup/vm/<id>/<time> <id> --storage local-zfs --pool ansible
+   ```
+
+   Start the guests (`pct start <id>` / `qm start <id>`), or reboot the host so `onboot` starts them in order.
+1. Check from the laptop. It should show nothing to do:
+
+   ```sh
+   ssh ansible-controller run check
+   ```
 
 ## Accepted risks
 
