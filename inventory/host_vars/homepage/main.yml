@@ -14,6 +14,7 @@ ansible_host: 192.168.1.108
 ufw_allow:
   - port: "3000"
     proto: tcp
+    from: "{{ web_client_sources }}"
 
 # run verify (playbooks/verify.yml)
 verify_units: [homepage]

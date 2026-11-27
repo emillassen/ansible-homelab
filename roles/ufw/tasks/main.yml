@@ -31,14 +31,40 @@
   loop: "{{ ufw_ssh_sources }}"
   when: not ansible_check_mode or 'ufw' in ansible_facts.packages
 
+# One rule per port and source; `from` is one address or a list (default: anyone).
 - name: Allow the service ports
   community.general.ufw:
     rule: allow
-    from_ip: "{{ item.from | default('any') }}"
+    from_ip: "{{ item.from }}"
     to_port: "{{ item.port }}"
     proto: "{{ item.proto }}"
-  loop: "{{ ufw_allow }}"
+  loop: "{{ ufw_allow_rules }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto }} from {{ item.from }}"
   when: not ansible_check_mode or 'ufw' in ansible_facts.packages
+
+- name: Read the rules ufw holds
+  ansible.builtin.command: ufw show added
+  register: ufw_added
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode or 'ufw' in ansible_facts.packages
+
+# A port that gained a `from` still has its old open-to-anyone rule. Only delete what is
+# there: a delete of a missing rule reports changed under --check.
+- name: Remove the open rule of a port that is now limited
+  community.general.ufw:
+    rule: allow
+    from_ip: any
+    to_port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    delete: true
+  loop: "{{ ufw_allow | selectattr('from', 'defined') | rejectattr('from', 'equalto', 'any') | list }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto }}"
+  when:
+    - ufw_added is not skipped
+    - ('ufw allow ' ~ item.port ~ '/' ~ item.proto) in ufw_added.stdout_lines
 
 - name: Enable ufw
   community.general.ufw:

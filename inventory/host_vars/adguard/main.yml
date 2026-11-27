@@ -18,6 +18,7 @@ ufw_allow:
     proto: udp
   - port: "80"
     proto: tcp
+    from: "{{ web_client_sources }}"
 
 # run verify (playbooks/verify.yml)
 verify_units: [adguardhome]

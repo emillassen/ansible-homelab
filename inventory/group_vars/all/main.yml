@@ -29,6 +29,14 @@ ufw_ssh_sources:
   - 192.168.1.102
 ufw_routed: deny
 ufw_allow: []
+# Who may reach a web UI directly: Caddy (.88), Uptime Kuma (.117, its monitors use
+# addresses) and the admin laptop (.42). Everyone else goes through Caddy.
+web_client_sources:
+  - 192.168.1.88
+  - 192.168.1.117
+  - 192.168.1.42
+admin_sources:
+  - 192.168.1.42
 
 proxmox_api_host: 192.168.1.100
 proxmox_api_user: ansible@pve

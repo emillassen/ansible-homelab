@@ -16,7 +16,7 @@
     - base
 
 - name: Firewall
-  hosts: managed:&lxc
+  hosts: managed
   roles:
     - ufw
 

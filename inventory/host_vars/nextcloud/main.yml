@@ -15,10 +15,13 @@ ansible_host: 192.168.1.121
 # AIO creates its own containers, so the daemon default would be the only way to set
 # their log driver; they log to json-file, as before.
 docker_loki_default: false
-# Nextcloud trusts Caddy's X-Forwarded-For, so only Caddy may reach Apache. 8080 (the AIO
-# UI, behind its own login) stays on the LAN; 3478 (Talk's TURN) is AIO's own port.
+# Nextcloud trusts Caddy's X-Forwarded-For, so only Caddy may reach Apache. 8080 is the
+# AIO interface, which drives Docker through the socket (root on this VM): admin only.
 docker_user_filter:
   - {port: 11000, allow: 192.168.1.88}
+  - {port: 8080, allow: "{{ admin_sources }}"}
+# 3478 is Talk's TURN server (AIO's own port), for Talk clients on the LAN.
+docker_published_open: [3478]
 
 # run verify (playbooks/verify.yml)
 verify_http:

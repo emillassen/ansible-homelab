@@ -14,8 +14,10 @@ ansible_host: 192.168.1.107
 ufw_allow:
   - port: "6052"
     proto: tcp
+    from: "{{ web_client_sources }}"
   - port: "6055"
     proto: tcp
+    from: "{{ admin_sources }}"
   - port: "5353"
     proto: udp
 

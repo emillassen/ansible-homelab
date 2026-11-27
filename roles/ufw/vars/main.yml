@@ -1,0 +1,11 @@
+---
+# ufw_allow flattened to one rule per source.
+ufw_allow_rules: >-
+  {%- set out = [] -%}
+  {%- for i in ufw_allow -%}
+  {%- set srcs = i.from | default('any') -%}
+  {%- for s in ([srcs] if srcs is string else srcs) -%}
+  {%- set _ = out.append({'port': i.port | string, 'proto': i.proto, 'from': s}) -%}
+  {%- endfor -%}
+  {%- endfor -%}
+  {{ out }}

@@ -16,6 +16,7 @@ ufw_allow:
     proto: udp
   - port: "10086"
     proto: tcp
+    from: "{{ web_client_sources }}"
 ufw_routed: allow
 
 # run verify (playbooks/verify.yml)
