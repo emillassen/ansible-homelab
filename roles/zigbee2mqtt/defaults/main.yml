@@ -1,8 +1,5 @@
 ---
 # renovate: datasource=github-releases depName=Koenkk/zigbee2mqtt
 zigbee2mqtt_version: "2.14.3"
-# Match "packageManager" in the tag's package.json; pnpm otherwise fetches that version itself.
-# renovate: datasource=npm depName=pnpm
-zigbee2mqtt_pnpm_version: "11.26.0"
 zigbee2mqtt_dir: /opt/zigbee2mqtt
 zigbee2mqtt_data: /opt/zigbee2mqtt/data
