@@ -51,11 +51,24 @@
     - xcaddy-{{ caddy_xcaddy_version }}
   when: not ansible_check_mode or caddy_build_dir_created is not changed
 
+- name: Look up the Go {{ caddy_go_version }} checksum
+  ansible.builtin.uri:
+    url: https://go.dev/dl/?mode=json&include=all
+    return_content: true
+  register: caddy_go_releases
+  check_mode: false
+  when: not ansible_check_mode or caddy_build_dir_created is not changed
+
 - name: Download Go {{ caddy_go_version }}
   ansible.builtin.get_url:
     url: https://go.dev/dl/go{{ caddy_go_version }}.linux-amd64.tar.gz
     dest: "{{ caddy_build_dir }}/go-{{ caddy_go_version }}.tar.gz"
-    checksum: "sha256:{{ caddy_go_sha256 }}"
+    # Fails if go.dev lists no such file, rather than downloading it unchecked.
+    checksum: >-
+      sha256:{{ (caddy_go_releases.json
+        | selectattr('version', 'equalto', 'go' ~ caddy_go_version) | first).files
+        | selectattr('filename', 'equalto', 'go' ~ caddy_go_version ~ '.linux-amd64.tar.gz')
+        | map(attribute='sha256') | first }}
     mode: "0644"
   register: caddy_go_download
   when: not ansible_check_mode or caddy_build_dir_created is not changed
@@ -64,7 +77,7 @@
   ansible.builtin.get_url:
     url: https://github.com/caddyserver/xcaddy/releases/download/v{{ caddy_xcaddy_version }}/xcaddy_{{ caddy_xcaddy_version }}_linux_amd64.tar.gz
     dest: "{{ caddy_build_dir }}/xcaddy-{{ caddy_xcaddy_version }}.tar.gz"
-    checksum: "sha512:{{ caddy_xcaddy_sha512 }}"
+    checksum: "sha512:https://github.com/caddyserver/xcaddy/releases/download/v{{ caddy_xcaddy_version }}/xcaddy_{{ caddy_xcaddy_version }}_checksums.txt"
     mode: "0644"
   register: caddy_xcaddy_download
   when: not ansible_check_mode or caddy_build_dir_created is not changed

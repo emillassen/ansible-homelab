@@ -11,12 +11,11 @@ caddy_cloudflare_ip_version: "f53b62aa13cb7ad79c8b47aacc3f2f03989b67e5"
 
 # renovate: datasource=github-releases depName=caddyserver/xcaddy
 caddy_xcaddy_version: "0.4.7"
-caddy_xcaddy_sha512: 99fd895a7b7799b18c43ea0915777d8701aaab2a010035b23495c28b4ae429edccd70adb9a01106180f8d9333d9b5df41e74f9702ce0e1cffcf8840698a9ab93
-# Caddy needs a newer Go than Debian 13 has. Update the checksum with the version
-# (https://go.dev/dl/?mode=json).
+# Caddy needs a newer Go than Debian 13 has.
 # renovate: datasource=golang-version depName=go
 caddy_go_version: "1.27.4"
-caddy_go_sha256: 9849f4e04ee35303714e34fbc3ac8ab44ea3e448a95aa182f91e3b9b79c710ec
+# Both downloads are checked against the checksums upstream publishes for that version
+# (go.dev/dl JSON, xcaddy's release checksums file), so a Renovate bump needs no hash edit.
 
 caddy_build_dir: /opt/caddy-build
 caddy_bin: /usr/local/bin/caddy

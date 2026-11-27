@@ -738,6 +738,7 @@ The backups are still on Holocron. Rebuild in this order:
 1. Nextcloud AIO updates itself daily, as upstream recommends.
 1. The repo is public: IPs, MACs and public keys are visible, and the vault files can be attacked offline. The vault password must be long and random.
 1. Python packages are pinned by version, not hash. Galaxy collections are not signature-checked.
+1. Caddy's Go and xcaddy downloads are checked against the checksums upstream publishes, fetched at apply time over HTTPS, not pinned in the repo. A compromised go.dev or xcaddy release passes, and an outage of either blocks a Caddy apply.
 1. A merged Renovate PR goes live on the next `apply`, breaking changes included. Minor, patch and digest updates merge without review; `lint` checks syntax and style, not whether the new version works.
 1. Third-party apt repos (Docker, Jellyfin, NodeSource) can ship a major through unattended-upgrades, outside Renovate.
 1. Backups are on Holocron, in the same house, with no off-site copy. PBS doesn't encrypt them; Holocron's disk encryption covers stolen or discarded disks, not access to the running Holocron or the share.
