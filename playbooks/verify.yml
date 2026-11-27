@@ -168,22 +168,30 @@
         (item.State != 'running' and item.Names not in verify_docker_exited_ok | default([]))
         or item.Status is search('unhealthy|health: starting')
 
-    # Ports is e.g. "0.0.0.0:2283->2283/tcp, [::]:3478->3478/udp, 0.0.0.0:8000-8001->8000-8001/tcp".
+    # Ports is e.g. "80/tcp, 0.0.0.0:2283->2283/tcp, [::]:3478->3478/udp, 0.0.0.0:8000-8001->8000-8001/tcp"
+    # (only entries with -> are published). An entry the pattern doesn't fit is flagged too.
     # docker_user_filter covers IPv4 TCP; anything else must be in docker_published_open.
     - name: Note published ports nobody decided on
       ansible.builtin.set_fact:
-        verify_problems: "{{ verify_problems + ['published ' ~ item.proto ~ (' IPv6' if item.v6 else '') ~ ' port ' ~ item.port
-                             ~ ' is in neither docker_user_filter nor docker_published_open'] }}"
+        verify_problems: "{{ verify_problems + [('published binding not understood: ' ~ item.port) if item.proto == 'unparsed'
+                             else ('published ' ~ item.proto ~ (' IPv6' if item.v6 else '') ~ ' port ' ~ item.port
+                             ~ ' is in neither docker_user_filter nor docker_published_open')] }}"
       vars:
         verify_filtered: "{{ docker_user_filter | default([]) | map(attribute='port') | map('int') | list }}"
         verify_open: "{{ docker_published_open | default([]) | map('int') | list }}"
       loop: >-
         {%- set out = [] -%}
         {%- for c in verify_containers.stdout_lines | default([]) | map('from_json') -%}
-        {%- for b in c.Ports | regex_findall('([[]::[]]|[0-9.]+):([0-9]+)(?:-([0-9]+))?->[^,]*?/(tcp|udp)') -%}
+        {%- for e in c.Ports.split(', ') | select('search', '->') -%}
+        {%- set b = e | regex_findall('^([[][^]]*[]]|[0-9.]+):([0-9]+)(?:-([0-9]+))?->[0-9-]+/([a-z]+)$') -%}
+        {%- if b | length == 1 -%}
+        {%- set b = b[0] -%}
         {%- for p in range(b[1] | int, (b[2] or b[1]) | int + 1) -%}
-        {%- set _ = out.append({'v6': b[0] == '[::]', 'port': p, 'proto': b[3]}) -%}
+        {%- set _ = out.append({'v6': b[0].startswith('['), 'port': p, 'proto': b[3]}) -%}
         {%- endfor -%}
+        {%- else -%}
+        {%- set _ = out.append({'v6': false, 'port': e, 'proto': 'unparsed'}) -%}
+        {%- endif -%}
         {%- endfor -%}
         {%- endfor -%}
         {{ out | unique }}
