@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   lint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     defaults:
       run:
         # bash here means -eo pipefail, so a failing grep in a pipe fails the step.
