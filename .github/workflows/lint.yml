@@ -1,0 +1,50 @@
+# Required check on main (ruleset). The push run on main is also what the nightly job
+# reads before it deploys a commit, so the job and its name ("lint") must stay as they are.
+name: lint
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        # bash here means -eo pipefail, so a failing grep in a pipe fails the step.
+        shell: bash
+    env:
+      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/collections
+      # renovate: datasource=pypi depName=ansible-lint
+      ANSIBLE_LINT_VERSION: 26.11.1
+      # renovate: datasource=npm depName=renovate
+      RENOVATE_VERSION: 45.1.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version-file: requirements-uv.txt
+          python-version: "3.13"
+      # Renovate needs Node 24 or newer; the runner's default is older.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      # The same pins the controller installs at sync.
+      - name: Install Ansible and the collections
+        run: |
+          uv venv .venv
+          uv pip install --python .venv -r requirements.txt "ansible-lint==$ANSIBLE_LINT_VERSION"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/ansible-galaxy collection install -r requirements.yml -p collections
+      # No vault password here: syntax-check must pass without secrets.
+      - name: Syntax-check every playbook
+        run: for p in playbooks/*.yml; do ansible-playbook --syntax-check "$p"; done
+      - name: ansible-lint
+        run: ansible-lint --offline
+      - name: shellcheck
+        run: |
+          git ls-files -z | xargs -0 grep -lZ -m1 '^#!.*\(ba\)\?sh' -- 2>/dev/null \
+            | xargs -0 shellcheck
+      - name: Renovate config
+        run: npx --yes --package "renovate@$RENOVATE_VERSION" -- renovate-config-validator --strict

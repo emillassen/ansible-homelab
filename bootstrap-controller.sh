@@ -16,6 +16,7 @@ reset_vault_pass=""
 home=/home/ansible
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
+# shellcheck source=/dev/null
 . /etc/os-release
 [ "$VERSION_CODENAME" = trixie ] || { echo "expects Debian 13 (trixie)" >&2; exit 1; }
 [ -n "$repo_url" ] || { echo "usage: $0 REPO_URL [--reset-vault-pass]" >&2; exit 64; }
