@@ -35,7 +35,7 @@
   ansible.builtin.get_url:
     url: https://github.com/AdguardTeam/AdGuardHome/releases/download/{{ adguard_version }}/AdGuardHome_linux_amd64.tar.gz
     dest: "{{ adguard_dist }}/AdGuardHome_{{ adguard_version }}_linux_amd64.tar.gz"
-    checksum: "sha256:{{ adguard_sha256 }}"
+    checksum: "sha256:https://github.com/AdguardTeam/AdGuardHome/releases/download/{{ adguard_version }}/checksums.txt"
     mode: "0644"
   # Under --check on a fresh guest the directory isn't there to download into.
   when: not ansible_check_mode or adguard_dirs is not changed
