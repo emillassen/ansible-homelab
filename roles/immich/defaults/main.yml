@@ -7,7 +7,7 @@ immich_version: "v3.4.2"
 # with VectorChord). Not bumped by Renovate: take it from that release's compose file.
 immich_postgres_image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
 # renovate: datasource=docker depName=valkey/valkey
-immich_valkey_version: "9.2.0"
+immich_valkey_version: "9.2.1"
 immich_project: /home/emil/immich-app
 # The library (originals, thumbs, encoded video, Immich's own DB backups) on Holocron.
 # Its NFS rule matches the production address only.

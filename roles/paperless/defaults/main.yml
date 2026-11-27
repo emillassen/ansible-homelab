@@ -5,7 +5,7 @@ paperless_version: "3.5.1"
 # renovate: datasource=docker depName=postgres
 paperless_postgres_version: "18.7"
 # renovate: datasource=docker depName=valkey/valkey
-paperless_valkey_version: "9.2.0-alpine"
+paperless_valkey_version: "9.2.1-alpine"
 # renovate: datasource=docker depName=gotenberg/gotenberg
 paperless_gotenberg_version: "8.40.0"
 # renovate: datasource=docker depName=apache/tika
