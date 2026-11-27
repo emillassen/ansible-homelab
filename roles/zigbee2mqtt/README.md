@@ -1,6 +1,6 @@
 # zigbee2mqtt
 
-Zigbee2MQTT built from its pinned source tag with pnpm on NodeSource Node (the `nodejs` role), run as the `zigbee2mqtt` user, which can only write to `data/`. The unit is the one from the Zigbee2MQTT guide (`Type=notify` with a watchdog). There's no updater timer: Renovate bumps the tag, and a bump stops the service, clears everything but `data/`, unpacks, runs `pnpm install` and `pnpm run build`, and writes `.version`. Keep `zigbee2mqtt_pnpm_version` equal to `packageManager` in the tag's `package.json`.
+Zigbee2MQTT built from its pinned source tag with pnpm on NodeSource Node (the `nodejs` role), run as the `zigbee2mqtt` user, which can only write to `data/`. The unit is the one from the Zigbee2MQTT guide (`Type=notify` with a watchdog). There's no updater timer: Renovate bumps the tag, and a bump stops the service, clears everything but `data/`, unpacks, runs `pnpm install` and `pnpm run build`, and writes `.version`. pnpm is installed at the version `packageManager` in the tag's `package.json` names, so it has no pin of its own.
 
 The coordinator (`tcp://192.168.1.21:6638`) takes one client at a time, so the service is stopped and disabled until `net_production` is true *and* `data/configuration.yaml` exists. `run migrate` stops the old service, copies the whole `data/` directory (configuration with the network key, `database.db`, `coordinator_backup.json`, `state.json`) and leaves the new service stopped; the cutover apply starts it.
 

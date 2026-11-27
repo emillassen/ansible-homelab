@@ -60,13 +60,25 @@
       "automerge": false
     },
     {
-      "description": "Controller tooling takes effect at sync, not apply: merge by hand, then sync and run check",
+      "description": "Controller tooling takes effect at sync, not apply: minors and majors merge by hand, then sync and run check",
       "matchFileNames": [
         "requirements.txt",
         "requirements-uv.txt",
         "requirements.yml"
       ],
-      "automerge": false
+      "automerge": false,
+      "matchUpdateTypes": ["minor", "major"]
+    },
+    {
+      "description": "Gotenberg follows the version Paperless's upstream Compose file uses (8.x); move the limit by hand when it does",
+      "matchPackageNames": ["gotenberg/gotenberg"],
+      "allowedVersions": "<9"
+    },
+    {
+      "description": "CI only: the workflow and its tools merge on their own, majors too. A version that breaks CI fails lint and isn't merged",
+      "matchFileNames": [".github/workflows/**"],
+      "automerge": true,
+      "platformAutomerge": false
     }
   ]
 }

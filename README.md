@@ -280,11 +280,16 @@ It must list exactly `/pool/ansible`, `/vms/903`, `/storage/local-zfs`, `/storag
 
 Install the Renovate app on the repo. It opens a dependency dashboard issue and one PR per bump. An update only merges once the release is 3 days old (`minimumReleaseAge`).
 
-Renovate merges minor, patch and digest updates itself once `lint` passes. It waits for that by its own runs, so a merge can take a few hours. These still wait for you:
+Renovate merges minor, patch and digest updates itself once `lint` passes. It waits for that by its own runs, so a merge can take a few hours. Anything in `.github/workflows/` merges on its own too, majors included: it only affects CI, and it merges only when the required `lint` check passes. These still wait for you:
 
-1. Majors. A Postgres major waits for approval on the dependency dashboard first.
+1. Majors of the apps and their parts. A Postgres major waits for approval on the dependency dashboard first.
 1. Immich: server, machine learning and Valkey come as one PR. Its Postgres image isn't tracked; update it from the matching upstream Compose file.
-1. The root `requirements.txt`, `requirements-uv.txt` and `requirements.yml`, which take effect at `sync`.
+1. Minors and majors in the root `requirements.txt`, `requirements-uv.txt` and `requirements.yml` (patches merge on their own). They take effect at `sync`, so follow one with `run check`.
+
+Two pins follow upstream instead of their own release stream:
+
+1. Zigbee2MQTT's pnpm has no pin: the role installs the version the tag's `package.json` names in `packageManager`.
+1. Gotenberg is held below 9 (`allowedVersions`) to match the Gotenberg major in Paperless's upstream Compose file. Raise the limit when Paperless moves.
 
 A merge changes `main` only. Nothing deploys until `sync` and `apply`.
 
