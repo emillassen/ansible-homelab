@@ -13,3 +13,31 @@ base_lc_vars:
   - LC_MONETARY
   - LC_PAPER
   - LC_MEASUREMENT
+
+# Packages the images ship that no guest uses. Purged with their unused dependencies
+# (unattended-upgrades would autoremove those anyway). A host that needs one sets its
+# own list in host_vars; Smokeping keeps postfix because smokeping depends on a mail agent.
+base_purge_packages_lxc:
+  - postfix
+base_purge_packages_vm:
+  - apport
+  - command-not-found
+  - fwupd
+  - landscape-common
+  - lxd-agent-loader
+  - lxd-installer
+  - modemmanager
+  - motd-news-config
+  - multipath-tools
+  - open-iscsi
+  - open-vm-tools
+  - packagekit
+  - plymouth
+  - snapd
+  - ubuntu-pro-client
+  - udisks2
+
+# LXCs never get /var/run/reboot-required for a library update, so needrestart restarts
+# the services still using the old copy at the end of every apt run. Ubuntu VMs ship it.
+base_lxc_packages:
+  - needrestart

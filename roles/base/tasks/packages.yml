@@ -1,7 +1,36 @@
 ---
+- name: Purge unused packages
+  ansible.builtin.apt:
+    name: "{{ base_purge }}"
+    state: absent
+    purge: true
+    autoremove: true
+  vars:
+    base_purge: "{{ base_purge_packages_lxc if 'lxc' in group_names else base_purge_packages_vm }}"
+  when: base_purge | length > 0
+
+# Before needrestart is installed, so its first run already restarts services.
+- name: Create the needrestart config directory
+  ansible.builtin.file:
+    path: /etc/needrestart/conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: "'lxc' in group_names"
+
+- name: Configure needrestart
+  ansible.builtin.copy:
+    src: needrestart-50-ansible.conf
+    dest: /etc/needrestart/conf.d/50-ansible.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: "'lxc' in group_names"
+
 - name: Install base packages
   ansible.builtin.apt:
-    name: "{{ base_packages }}"
+    name: "{{ base_packages + (base_lxc_packages if 'lxc' in group_names else []) }}"
     state: present
     update_cache: true
     cache_valid_time: 3600

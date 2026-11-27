@@ -11,7 +11,7 @@
 #   verify_interfaces: network links that must be up
 #   verify_docker_exited_ok: containers allowed to be stopped (one-shot jobs)
 # Every guest also gets: no failed units, local disks under verify_disk_max_pct, no
-# reboot pending for over a day, and (Docker hosts) every container running and not unhealthy,
+# reboot pending for over a day, no service left on replaced libraries (needrestart), and (Docker hosts) every container running and not unhealthy,
 # every published port in docker_user_filter or docker_published_open, and DOCKER-USER
 # holding exactly those rules, entered first from FORWARD.
 - name: Verify
@@ -47,6 +47,14 @@
       ansible.builtin.stat:
         path: /var/run/reboot-required
       register: verify_reboot
+
+    # -r l lists only; the config would otherwise restart them.
+    - name: List services on replaced libraries
+      ansible.builtin.command: needrestart -b -r l
+      register: verify_needrestart
+      changed_when: false
+      failed_when: false
+      check_mode: false
 
     - name: Fetch the HTTP endpoints
       ansible.builtin.uri:
@@ -133,6 +141,25 @@
       when:
         - verify_reboot.stat.exists
         - verify_reboot_age_h | int >= verify_reboot_max_age_h
+
+    - name: Note a needrestart that didn't run
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['needrestart failed: ' ~ (verify_needrestart.stderr | default('') or verify_needrestart.msg | default('rc ' ~ verify_needrestart.rc))] }}"
+      when: verify_needrestart.rc | default(-1) != 0
+
+    # needrestart never restarts these itself (its override_rc); a reboot or a container
+    # restart picks them up.
+    - name: Note services on replaced libraries
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['needs restart (old libraries): ' ~ verify_stale | join(', ')] }}"
+      vars:
+        verify_stale: "{{ verify_needrestart.stdout_lines | default([]) | select('match', 'NEEDRESTART-SVC: ')
+                          | map('regex_replace', '^NEEDRESTART-SVC: ', '')
+                          | reject('match', verify_needrestart_ignore) | list }}"
+        verify_needrestart_ignore: '^(dbus|dbus-broker|systemd-logind|user@[0-9]+|(container-|console-|serial-)?getty(@.*)?)\.service$'
+      when:
+        - verify_needrestart.rc | default(-1) == 0
+        - verify_stale | length > 0
 
     - name: Note bad HTTP answers
       ansible.builtin.set_fact:
