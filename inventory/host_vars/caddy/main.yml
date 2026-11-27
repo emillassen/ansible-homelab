@@ -18,3 +18,10 @@ ufw_allow:
     proto: tcp
   - port: "443"
     proto: udp
+
+# run verify (playbooks/verify.yml)
+verify_units: [caddy]
+verify_http:
+  - url: http://127.0.0.1/
+    status: 308
+verify_tcp: [443]

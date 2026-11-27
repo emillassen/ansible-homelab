@@ -15,11 +15,22 @@ On the controller the commands are `ansible-sync` and `ansible-run`. Over SSH as
 ssh ansible-controller sync
 ssh ansible-controller run check --limit caddy
 ssh ansible-controller run apply --limit caddy
+ssh ansible-controller run verify --limit caddy
 ssh ansible-controller run provision --check --limit caddy
 ssh ansible-controller run migrate --check --limit mosquitto,mosquitto-old
 ```
 
 `provision` and `migrate` are yours only; the `207` key can't run them.
+
+## Verify
+
+`run verify` (`playbooks/verify.yml`) checks that every guest is healthy, not only that its config matches. It changes nothing. A host fails with a list of everything wrong on it:
+
+1. Every guest: no failed systemd units, local disks under 80%, no pending reboot.
+1. Docker hosts: every container running and not unhealthy, except those in `verify_docker_exited_ok`.
+1. From `host_vars`: `verify_units` must be active, `verify_http` must answer on the guest with its `status` (default 200, redirects not followed), `verify_tcp` ports must accept a connection, `verify_interfaces` must be up.
+
+Run it after any `apply`, rebuild or Renovate merge, and whenever something seems off.
 
 ## Bootstrap
 
@@ -262,6 +273,7 @@ Install the Renovate app on the repo. It opens a dependency dashboard issue and 
 1. Add the host to `lxc` or `vm` in `inventory/hosts.yml` and write `inventory/host_vars/<host>/main.yml` (copy a neighbour; pick a new temporary MAC with the `BC:24:11` prefix).
 1. Write `roles/<service>/` with versions pinned in `defaults/main.yml`, each under a `# renovate:` comment.
 1. Add a play for it to `playbooks/site.yml`.
+1. Add `verify_units` and `verify_http` (or `verify_tcp`) for it to `host_vars` (see "Verify").
 1. Commit, push, then:
 
    ```sh
@@ -306,7 +318,7 @@ Before each rebuild, the report lists the data to copy, how, and how it will be 
    ssh ansible-controller run apply --limit <host>
    ```
 
-   The second `apply` must show `changed=0`. Then test through the Caddy hostname with real data.
+   The second `apply` must show `changed=0`, and `run verify --limit <host>` must pass. Then test through the Caddy hostname with real data.
 
 1. Rollback, on the Proxmox host. `<mac_temp>` is in `inventory/host_vars/<host>/main.yml`. For a VM use `qm` and `--net0 virtio=<mac_temp>,bridge=vmbr0,firewall=1`. For Zigbee2MQTT run `pct exec <new> -- systemctl disable --now zigbee2mqtt` first, so 116 can't take the coordinator back on its next boot:
 
@@ -341,6 +353,7 @@ ssh ansible-controller run apply --limit <host>
    ssh ansible-controller sync
    ssh ansible-controller run check --limit <host>
    ssh ansible-controller run apply --limit <host>
+   ssh ansible-controller run verify --limit <host>
    ```
 
 A bump to `ansible-core`, `uv` or a collection takes effect at `sync`. Follow it with `run check` with no `--limit`. A change to `scripts/` reaches `113` only at `run apply --limit ansible-controller`.
