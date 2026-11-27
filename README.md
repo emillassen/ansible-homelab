@@ -436,7 +436,7 @@ PBS is set up by hand from these steps and is not managed by this repo: the cont
 | --- | --- |
 | VM | `217`, name `pbs`, 2 cores, 4 GB RAM, 32 GB disk |
 | Address | `pbs.hjem.sh`, `192.168.1.122`, MAC `BC:24:11:B4:B5:EA` |
-| Web UI | `https://192.168.1.122:8007`, user `root@pam` |
+| Web UI | `https://pbs.hjem.sh` (through Caddy) or `https://192.168.1.122:8007`, user `root@pam` |
 | Datastore | `homelab` at `/mnt/pbs/homelab`, on Holocron's `proxmox-backup-server` share |
 | Proxmox storage | `pbs`, token `pve@pbs!pve` |
 | Retention | 14 daily, 8 weekly, 6 monthly |
