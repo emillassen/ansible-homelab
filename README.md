@@ -583,6 +583,43 @@ pvesh get /cluster/backup
 
 1. The next morning, in the PBS web UI under Datastore → `homelab` → Content: every guest has a backup from 23:30.
 
+### 10. PBS: mail and update notices
+
+PBS is updated by hand: Administration → Updates → Upgrade in the web UI, then a reboot if a new kernel came in, outside 23:30 and 12:00–13:00. PBS only mails about pending updates with a subscription, so a timer asks for it at 05:00.
+
+1. Configuration → Notifications: disable `mail-to-root` and `default-matcher`. Add an SMTP target `fastmail` (`smtp.fastmail.com`, TLS, your username and app password, from `pbs@<your domain>`, recipient `root@pam`) and a matcher `fastmail-matcher` (match all, target `fastmail`).
+1. Configuration → Access Control → User Management → `root@pam` → E-Mail: your address. Then Test on the `fastmail` target.
+1. In the shell, the daily check. It runs `apt update` and mails each new package version once:
+
+   ```sh
+   cat > /etc/systemd/system/pbs-update-notify.service <<'EOF'
+   [Unit]
+   Description=Refresh apt and mail new PBS package updates
+   After=network-online.target
+
+   [Service]
+   Type=oneshot
+   ExecStart=/usr/sbin/proxmox-backup-debug api create /nodes/localhost/apt/update --notify true
+   EOF
+   cat > /etc/systemd/system/pbs-update-notify.timer <<'EOF'
+   [Unit]
+   Description=Daily PBS update check with mail
+
+   [Timer]
+   OnCalendar=*-*-* 05:00:00
+   Persistent=false
+
+   [Install]
+   WantedBy=timers.target
+   EOF
+   systemctl daemon-reload
+   systemctl enable --now pbs-update-notify.timer
+   systemctl start pbs-update-notify.service
+   systemctl status pbs-update-notify.service --no-pager
+   ```
+
+   The status must show `TASK OK` and `status=0/SUCCESS`.
+
 ### After losing the Proxmox host
 
 The backups are still on Holocron. Rebuild in this order:
@@ -596,7 +633,7 @@ The backups are still on Holocron. Rebuild in this order:
    ```
 
 1. Step 7 in full: the jobs, the user and a **new** token (the old secret went with the old PBS). Save the new secret and fingerprint.
-1. Step 8: storage and backup job.
+1. Steps 8 and 10: storage, backup job, mail and update notices.
 1. On the Proxmox host, list the backups and restore `113` first, with its own ID. `113` is not in the `ansible` pool:
 
    ```sh
