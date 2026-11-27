@@ -3,3 +3,18 @@
   ansible.builtin.service:
     name: ssh
     state: restarted
+
+# Only units the purged packages shipped (postfix.service, or postfix@-.service from postfix@.service)
+# that are still running without a unit file.
+- name: Stop the purged services
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    systemctl list-units --type=service --all --plain --no-legend
+    | awk -v units="{{ base_purge_units.stdout_lines | default([]) | join(' ') }}"
+    'BEGIN { n = split(units, u, " ") }
+    $2 == "not-found" && $3 == "active" {
+    for (i = 1; i <= n; i++) if ($1 == u[i] || (u[i] ~ /@\.service$/ && index($1, substr(u[i], 1, length(u[i]) - 8)) == 1)) { print $1; break } }'
+    | xargs -r -d '\n' systemctl stop --
+  args:
+    executable: /bin/bash
+  changed_when: true

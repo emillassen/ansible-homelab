@@ -1,4 +1,20 @@
 ---
+# Read before the purge, for the handler below; nothing to read once the packages are gone.
+- name: List the services the purge removes
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    dpkg-query -L {{ base_purge | join(' ') }} 2>/dev/null
+    | sed -n 's#^\(/usr\)\?/lib/systemd/system/\([^/]*\.service\)$#\2#p' | sort -u
+  args:
+    executable: /bin/bash
+  vars:
+    base_purge: "{{ base_purge_packages_lxc if 'lxc' in group_names else base_purge_packages_vm }}"
+  register: base_purge_units
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: base_purge | length > 0
+
 - name: Purge unused packages
   ansible.builtin.apt:
     name: "{{ base_purge }}"
@@ -8,6 +24,8 @@
   vars:
     base_purge: "{{ base_purge_packages_lxc if 'lxc' in group_names else base_purge_packages_vm }}"
   when: base_purge | length > 0
+  # A purge removes the unit file, but some packages (postfix) leave their daemon running.
+  notify: Stop the purged services
 
 # Before needrestart is installed, so its first run already restarts services.
 - name: Create the needrestart config directory
