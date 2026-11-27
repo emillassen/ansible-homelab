@@ -4,17 +4,23 @@
     name: ssh
     state: restarted
 
-# Only units the purged packages shipped (postfix.service, or postfix@-.service from postfix@.service)
-# that are still running without a unit file.
+# Only units the purged packages shipped (postfix.service, or postfix@-.service from
+# postfix@.service) and now without a unit file: stop the ones still running, then clear
+# the failed state that stopping, or a timer firing mid-purge, leaves behind.
 - name: Stop the purged services
   ansible.builtin.shell: >-
     set -o pipefail;
+    purged() {
     systemctl list-units --type=service --all --plain --no-legend
-    | awk -v units="{{ base_purge_units.stdout_lines | default([]) | join(' ') }}"
+    | awk -v units="{{ base_purge_units.stdout_lines | default([]) | join(' ') }}" -v state="$1"
     'BEGIN { n = split(units, u, " ") }
-    $2 == "not-found" && $3 == "active" {
-    for (i = 1; i <= n; i++) if ($1 == u[i] || (u[i] ~ /@\.service$/ && index($1, substr(u[i], 1, length(u[i]) - 8)) == 1)) { print $1; break } }'
-    | xargs -r -d '\n' systemctl stop --
+    $2 == "not-found" && $3 == state {
+    for (i = 1; i <= n; i++) if ($1 == u[i] || (u[i] ~ /@\.service$/ && index($1, substr(u[i], 1, length(u[i]) - 8)) == 1)) { print $1; break } }';
+    };
+    rc=0;
+    purged active | xargs -r -d '\n' systemctl stop -- || rc=$?;
+    purged failed | xargs -r -d '\n' systemctl reset-failed -- || rc=$?;
+    exit "$rc"
   args:
     executable: /bin/bash
   changed_when: true
