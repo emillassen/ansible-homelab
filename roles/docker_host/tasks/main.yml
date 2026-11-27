@@ -37,6 +37,17 @@
   register: docker_install
   when: not ansible_check_mode or (docker_repo is not skipped and docker_repo is not changed)
 
+# nfs-common pulls in rpcbind, which listens on 111 for NFSv3 only; the shares are 4.2.
+- name: Stop and mask rpcbind
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    masked: true
+  loop:
+    - rpcbind.socket
+    - rpcbind.service
+  when: not ansible_check_mode or 'rpcbind' in ansible_facts.packages
+
 - name: Note whether Docker is installed
   ansible.builtin.set_fact:
     docker_present: "{{ not ansible_check_mode or 'docker-ce' in ansible_facts.packages }}"

@@ -8,7 +8,9 @@ Docker from Docker's apt repo (key in `files/`), updated by unattended-upgrades,
 
 Hosts with `docker_loki_default: false` use `json-file` instead (the Loki VM itself). A change to `daemon.json` restarts Docker; running containers keep their old log settings until they're recreated (`docker compose up -d --force-recreate`).
 
-`docker_user_filter` (in a host's vars) limits published ports to one source each, through Docker's DOCKER-USER chain and `docker-user-filter.service`, which runs again whenever Docker restarts. Published ports are bound to `0.0.0.0` in the compose files, so IPv6 doesn't reach them.
+`docker_user_filter` (in a host's vars) limits each published port to a list of sources, through Docker's DOCKER-USER chain and `docker-user-filter.service`, which runs again whenever Docker restarts. UFW can't do this: Docker's published ports skip the INPUT chain. Every published port is either in `docker_user_filter` or, if it really is for the whole LAN, in `docker_published_open`; `run verify` fails on a port in neither, and on a filtered port whose DROP rule is missing (DOCKER-USER exists only with Docker's iptables backend, so a switch to the nftables backend would show up there). Published ports are bound to `0.0.0.0` in the compose files, so IPv6 doesn't reach them.
+
+`rpcbind` (pulled in by `nfs-common`) is stopped and masked: the shares are NFS 4.2 (`nfs_automount`), which doesn't use it, and it would otherwise listen on port 111.
 
 ## Resources
 

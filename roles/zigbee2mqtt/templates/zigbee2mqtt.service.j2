@@ -11,6 +11,8 @@ Group=zigbee2mqtt
 WorkingDirectory={{ zigbee2mqtt_dir }}
 Environment=NODE_ENV=production
 Environment=ZIGBEE2MQTT_DATA={{ zigbee2mqtt_data }}
+# ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN, read by systemd as root.
+EnvironmentFile=/etc/zigbee2mqtt/frontend.env
 ExecStart=/usr/bin/node index.js
 StandardOutput=journal
 StandardError=inherit

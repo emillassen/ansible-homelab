@@ -4,7 +4,10 @@
 :DOCKER-USER - [0:0]
 -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
 {% for rule in docker_user_filter %}
--A DOCKER-USER ! -s {{ rule.allow }}/32 -p tcp -m conntrack --ctorigdst {{ ansible_facts.default_ipv4.address }} --ctorigdstport {{ rule.port }} -j DROP
+{% for src in ([rule.allow] if rule.allow is string else rule.allow) %}
+-A DOCKER-USER -s {{ src }}/32 -p tcp -m conntrack --ctorigdst {{ ansible_facts.default_ipv4.address }} --ctorigdstport {{ rule.port }} -j RETURN
+{% endfor %}
+-A DOCKER-USER -p tcp -m conntrack --ctorigdst {{ ansible_facts.default_ipv4.address }} --ctorigdstport {{ rule.port }} -j DROP
 {% endfor %}
 -A DOCKER-USER -j RETURN
 COMMIT

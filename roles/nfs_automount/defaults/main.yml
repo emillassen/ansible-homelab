@@ -3,4 +3,5 @@
 nfs_automount_shares: []
 # hard (the default, no `soft`): a soft mount can return I/O errors that corrupt
 # files being written, or make an app flag media as missing mid-scan.
-nfs_automount_opts: _netdev,auto,nofail,x-systemd.automount,x-systemd.mount-timeout=10,timeo=14,x-systemd.idle-timeout=1min
+# nfsvers=4.2: what Holocron negotiates anyway; pinned so nothing needs rpcbind (docker_host masks it).
+nfs_automount_opts: _netdev,auto,nofail,nfsvers=4.2,x-systemd.automount,x-systemd.mount-timeout=10,timeo=14,x-systemd.idle-timeout=1min

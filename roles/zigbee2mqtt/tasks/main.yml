@@ -164,6 +164,28 @@
     group: zigbee2mqtt
     mode: "0750"
 
+# The frontend controls every device, so it needs a token (frontend.auth_token, set
+# through Zigbee2MQTT's environment override). Picked on the first apply and kept on
+# the guest (force: false), never vaulted: read it with `cat /etc/zigbee2mqtt/frontend.env`.
+- name: Create the frontend token directory
+  ansible.builtin.file:
+    path: /etc/zigbee2mqtt
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate the frontend token
+  ansible.builtin.copy:
+    content: "ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN={{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}\n"
+    dest: /etc/zigbee2mqtt/frontend.env
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+  no_log: true
+  notify: Restart zigbee2mqtt
+
 - name: Write the service unit
   ansible.builtin.template:
     src: zigbee2mqtt.service.j2

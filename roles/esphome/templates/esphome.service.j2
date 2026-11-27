@@ -10,6 +10,8 @@ User=esphome
 Group=esphome
 WorkingDirectory={{ esphome_home }}
 Environment=HOME={{ esphome_home }}
+# ESPHOME_USERNAME and ESPHOME_PASSWORD, read by systemd as root.
+EnvironmentFile=/etc/esphome/dashboard.env
 ExecStart={{ esphome_venv }}/bin/esphome-device-builder {{ esphome_config }}/
 Restart=always
 RestartSec=5

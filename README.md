@@ -731,7 +731,7 @@ The backups are still on Holocron. Rebuild in this order:
 1. The `207` key has no passphrase. It can run `sync`, `check` and `apply`, not `provision` or `migrate`. With `207`'s account-wide `gh` token, an agent can't push to `main` (the ruleset requires a PR with a passing `lint`), but it can open and merge its own PR and then apply it; "I merge" is a process rule, not a technical one.
 1. New guests' host keys are trusted on first scan, over the LAN, right after creation.
 1. The token's `VM.Allocate` on the pool can delete pool guests. No task uses `state: absent`.
-1. VMs have no host firewall. SSH there is key-only but reachable from the whole LAN.
+1. The firewalls are inside the guests (UFW, and DOCKER-USER for published Docker ports), so root on a guest can turn its own off. Jellyfin, Mosquitto, AdGuard's DNS, Caddy, WireGuard's UDP port and Talk's TURN port stay open to the whole flat LAN, for the clients that use them directly.
 1. unattended-upgrades takes every origin, so third-party apt repos are not pinned. Guests reboot at 02:00 when needed.
 1. The old community-scripts LXCs get no patches between removing the host cron and their rebuild.
 1. Until they are removed, the temporary laptop keys have no passphrase. Whoever copies it gets root on every guest, `run` on the controller (including `provision` and `migrate`), push to this repo and commits that show as verified.

@@ -11,7 +11,9 @@
 #   verify_interfaces: network links that must be up
 #   verify_docker_exited_ok: containers allowed to be stopped (one-shot jobs)
 # Every guest also gets: no failed units, local disks under verify_disk_max_pct, no
-# reboot pending for over a day, and (Docker hosts) every container running and not unhealthy.
+# reboot pending for over a day, and (Docker hosts) every container running and not unhealthy,
+# every published port in docker_user_filter or docker_published_open, and DOCKER-USER
+# holding exactly those rules, entered first from FORWARD.
 - name: Verify
   hosts: managed
   gather_facts: false
@@ -86,6 +88,22 @@
       check_mode: false
       when: "'docker' in group_names"
 
+    - name: Read the DOCKER-USER chain
+      ansible.builtin.command: iptables -S DOCKER-USER
+      register: verify_docker_user
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when: "'docker' in group_names"
+
+    - name: Read the FORWARD chain
+      ansible.builtin.command: iptables -S FORWARD
+      register: verify_forward
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when: "'docker' in group_names"
+
     # Each check appends to verify_problems; failed_when: false above keeps every check
     # running, so the judgement happens here.
     - name: Start the problem list
@@ -149,6 +167,70 @@
       when: >-
         (item.State != 'running' and item.Names not in verify_docker_exited_ok | default([]))
         or item.Status is search('unhealthy|health: starting')
+
+    # Ports is e.g. "80/tcp, 0.0.0.0:2283->2283/tcp, [::]:3478->3478/udp, 0.0.0.0:8000-8001->8000-8001/tcp"
+    # (only entries with -> are published). An entry the pattern doesn't fit is flagged too.
+    # docker_user_filter covers IPv4 TCP; anything else must be in docker_published_open.
+    - name: Note published ports nobody decided on
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + [('published binding not understood: ' ~ item.port) if item.proto == 'unparsed'
+                             else ('published ' ~ item.proto ~ (' IPv6' if item.v6 else '') ~ ' port ' ~ item.port
+                             ~ ' is in neither docker_user_filter nor docker_published_open')] }}"
+      vars:
+        verify_filtered: "{{ docker_user_filter | default([]) | map(attribute='port') | map('int') | list }}"
+        verify_open: "{{ docker_published_open | default([]) | map('int') | list }}"
+      loop: >-
+        {%- set out = [] -%}
+        {%- for c in verify_containers.stdout_lines | default([]) | map('from_json') -%}
+        {%- for e in c.Ports.split(', ') | select('search', '->') -%}
+        {%- set b = e | regex_findall('^([[][^]]*[]]|[0-9.]+):([0-9]+)(?:-([0-9]+))?->[0-9-]+/([a-z]+)$') -%}
+        {%- if b | length == 1 -%}
+        {%- set b = b[0] -%}
+        {%- for p in range(b[1] | int, (b[2] or b[1]) | int + 1) -%}
+        {%- set _ = out.append({'v6': b[0].startswith('['), 'port': p, 'proto': b[3]}) -%}
+        {%- endfor -%}
+        {%- else -%}
+        {%- set _ = out.append({'v6': false, 'port': e, 'proto': 'unparsed'}) -%}
+        {%- endif -%}
+        {%- endfor -%}
+        {%- endfor -%}
+        {{ out | unique }}
+      loop_control:
+        label: "{{ item.proto }} {{ item.port }}"
+      when:
+        - "'docker' in group_names"
+        - item.port not in verify_open
+        - item.v6 or item.proto != 'tcp' or item.port not in verify_filtered
+
+    # The chain must be exactly what docker-user-filter.rules loads, for the current address
+    # (ansible_host is the production address after cutover), and FORWARD must enter it first.
+    - name: Note a DOCKER-USER chain that isn't the filter
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['DOCKER-USER is not the docker_user_filter rules: ' ~ verify_docker_user.stdout_lines | join(' | ')] }}"
+      vars:
+        verify_expected: >-
+          {%- set out = ['-N DOCKER-USER', '-A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN'] -%}
+          {%- for rule in docker_user_filter | default([]) -%}
+          {%- set m = '-p tcp -m conntrack --ctorigdst ' ~ ansible_host ~ ' --ctorigdstport ' ~ rule.port -%}
+          {%- for src in ([rule.allow] if rule.allow is string else rule.allow) -%}
+          {%- set _ = out.append('-A DOCKER-USER -s ' ~ src ~ '/32 ' ~ m ~ ' -j RETURN') -%}
+          {%- endfor -%}
+          {%- set _ = out.append('-A DOCKER-USER ' ~ m ~ ' -j DROP') -%}
+          {%- endfor -%}
+          {%- set _ = out.append('-A DOCKER-USER -j RETURN') -%}
+          {{ out }}
+      when:
+        - "'docker' in group_names"
+        - docker_user_filter | default([]) | length > 0
+        - verify_docker_user.stdout_lines != verify_expected
+
+    - name: Note a FORWARD chain that skips DOCKER-USER
+      ansible.builtin.set_fact:
+        verify_problems: "{{ verify_problems + ['FORWARD does not start with -j DOCKER-USER'] }}"
+      when:
+        - "'docker' in group_names"
+        - docker_user_filter | default([]) | length > 0
+        - (verify_forward.stdout_lines | select('match', '-A ') | first | default('')) != '-A FORWARD -j DOCKER-USER'
 
     - name: Report
       ansible.builtin.assert:

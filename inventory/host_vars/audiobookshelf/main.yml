@@ -12,6 +12,9 @@ net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
 ansible_host: 192.168.1.116
 
+docker_user_filter:
+  - {port: 13378, allow: "{{ web_client_sources }}"}
+
 # run verify (playbooks/verify.yml)
 verify_http:
   - url: http://127.0.0.1:13378/healthcheck
