@@ -1,6 +1,5 @@
 ---
 vmid: 209
-legacy_host: changedetection-old
 cores: 4
 memory: 4096
 disk_gb: 32
@@ -12,3 +11,8 @@ startup: ""
 net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
 ansible_host: 192.168.1.112
+
+# run verify (playbooks/verify.yml)
+verify_http:
+  - url: http://127.0.0.1:5000/
+    status: 302

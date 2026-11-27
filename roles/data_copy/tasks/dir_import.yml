@@ -1,74 +1,112 @@
 ---
-# On the new guest, with the app stopped. Unpacks into the directory and marks it imported.
+# On the new guest. Stops the app, unpacks into the directory, marks it imported and
+# starts the app.
 - name: Check for an earlier import
   ansible.builtin.stat:
     path: "{{ data_copy_path }}/.migrated"
   register: data_copy_marker
 
-- name: Refuse a second import
-  ansible.builtin.assert:
-    that: not data_copy_marker.stat.exists
-    fail_msg: "Already imported. Delete {{ data_copy_path }}/.migrated on {{ inventory_hostname }} to import again."
+# A run that stopped after the unpack (a failed start, a lost connection) only finishes
+# here: the app may already have written to the data, so it is never emptied again.
+- name: Skip the import if it was done
+  ansible.builtin.debug:
+    msg: >-
+      {{ data_copy_path }} was imported already, so this run only finishes it. Delete
+      {{ data_copy_path }}/.migrated on {{ inventory_hostname }} to import again.
+  when: data_copy_marker.stat.exists
 
-- name: Stop {{ data_copy_service }} before replacing its data
-  ansible.builtin.service:
-    name: "{{ data_copy_service }}"
-    state: stopped
-  when: data_copy_service != ""
+- name: Import {{ data_copy_path }}
+  when: not data_copy_marker.stat.exists
+  block:
+    - name: Stop {{ data_copy_service }} before replacing its data
+      ansible.builtin.service:
+        name: "{{ data_copy_service }}"
+        state: stopped
+      when: data_copy_service != ""
 
-# After the marker check, so a finished import is never emptied.
-- name: Find what's already in {{ data_copy_path }}
-  ansible.builtin.find:
-    paths: "{{ data_copy_path }}"
-    file_type: any
-    hidden: true
-  register: data_copy_existing
-  when: data_copy_clean
+    - name: Check that {{ data_copy_path }} is a directory to import into
+      ansible.builtin.assert:
+        that:
+          - data_copy_path is match('^/[^/]+')
+          - data_copy_path | normpath == data_copy_path
+        fail_msg: "data_copy_path must be an absolute, normalised path below /, not '{{ data_copy_path }}'"
 
-- name: Empty {{ data_copy_path }}
-  ansible.builtin.file:
-    path: "{{ data_copy_entry.path }}"
-    state: absent
-  loop: "{{ data_copy_existing.files | default([]) }}"
-  loop_control:
-    loop_var: data_copy_entry
-    label: "{{ data_copy_entry.path }}"
-  when: data_copy_clean
+    # After the marker check, so a finished import is never emptied. On the guest, since a
+    # file list of a big tree doesn't fit in the module's memory.
+    - name: Empty {{ data_copy_path }}
+      ansible.builtin.command:
+        argv: [find, "{{ data_copy_path }}", -xdev, -mindepth, "1", -delete]
+        removes: "{{ data_copy_path }}"
+      changed_when: true
+      when: data_copy_clean
 
-- name: Create {{ data_copy_path }}
-  ansible.builtin.file:
-    path: "{{ data_copy_path }}"
-    state: directory
-    owner: "{{ data_copy_owner }}"
-    group: "{{ data_copy_group }}"
-    mode: "0750"
+    - name: Create {{ data_copy_path }}
+      ansible.builtin.file:
+        path: "{{ data_copy_path }}"
+        state: directory
+        owner: "{{ data_copy_owner }}"
+        group: "{{ data_copy_group }}"
+        mode: "0750"
 
-# The fetch doesn't run under --check, so there is nothing staged to unpack.
-- name: Unpack the archive
-  ansible.builtin.unarchive:
-    src: "{{ data_copy_staging }}/{{ data_copy_name }}.tar.gz"
-    dest: "{{ data_copy_path }}"
-    owner: "{{ data_copy_owner }}"
-    group: "{{ data_copy_group }}"
-  when: not ansible_check_mode
+    # The fetch doesn't run under --check, so there is nothing staged to unpack.
+    # Copied and unpacked with tar on the guest: unarchive's memory grows with the number
+    # of files.
+    - name: Unpack the archive
+      when: not ansible_check_mode
+      block:
+        - name: Create the private archive directory
+          ansible.builtin.file:
+            path: "{{ data_copy_archive_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
 
-# tar creates parent directories it has no entry for (data_copy_include: [data/x])
-# as root, and unarchive only sets the owner on the entries.
-- name: Give everything in {{ data_copy_path }} to {{ data_copy_owner }}
-  ansible.builtin.file:
-    path: "{{ data_copy_path }}"
-    state: directory
-    recurse: true
-    owner: "{{ data_copy_owner }}"
-    group: "{{ data_copy_group }}"
-  when: not ansible_check_mode
+        - name: Copy the archive to the guest
+          ansible.builtin.copy:
+            src: "{{ data_copy_staging }}/{{ data_copy_name }}.tar.gz"
+            dest: "{{ data_copy_archive }}"
+            owner: root
+            group: root
+            mode: "0600"
 
-- name: Mark the import done
-  ansible.builtin.copy:
-    content: ""
-    dest: "{{ data_copy_path }}/.migrated"
-    force: false
-    mode: "0644"
+        # As root, tar restores the archived owners and modes; numeric, so a uid that has
+        # another name here (postgres in a container) stays the same uid.
+        - name: Unpack into {{ data_copy_path }}
+          ansible.builtin.command:
+            argv:
+              - tar
+              - -C
+              - "{{ data_copy_path }}"
+              - -xzf
+              - "{{ data_copy_archive }}"
+              - "{{ '--numeric-owner' if data_copy_keep_owners else '--no-same-owner' }}"
+          changed_when: true
+
+      always:
+        - name: Delete the archive on the guest
+          ansible.builtin.file:
+            path: "{{ data_copy_archive }}"
+            state: absent
+
+    # tar unpacks as root (--no-same-owner), including parent directories it has no
+    # entry for (data_copy_include: [data/x]).
+    - name: Give everything in {{ data_copy_path }} to {{ data_copy_owner }}
+      ansible.builtin.command:
+        argv: [chown, -R, --no-dereference, "{{ data_copy_owner }}:{{ data_copy_group }}", "{{ data_copy_path }}"]
+      changed_when: true
+      when:
+        - not ansible_check_mode
+        - not data_copy_keep_owners
+
+    # Before the start: from here on the app owns the data. An import that fails before
+    # this can simply run again.
+    - name: Mark the import done
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ data_copy_path }}/.migrated"
+        force: false
+        mode: "0644"
 
 - name: Start {{ data_copy_service }}
   ansible.builtin.service:

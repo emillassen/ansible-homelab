@@ -142,8 +142,9 @@
     requirements: "{{ wireguard_dashboard_src }}/requirements.txt"
     virtualenv: "{{ wireguard_dashboard_src }}/venv"
     virtualenv_command: python3 -m venv
-  # Under --check an install that would unpack has no requirements.txt yet.
-  when: not ansible_check_mode or not wireguard_install
+  # Under --check the module reports changed for any requirements file, and an install
+  # that would unpack has no requirements.txt yet; the unpack already reports the change.
+  when: not ansible_check_mode
   notify: Restart wg-dashboard
 
 # The ini and OIDC file follow CONFIGURATION_PATH, but the ini, db/ and plugins/ are

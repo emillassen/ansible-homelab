@@ -1,6 +1,5 @@
 ---
 vmid: 116
-legacy_host: zigbee2mqtt-old
 cores: 2
 memory: 2048
 disk_gb: 6
@@ -15,3 +14,8 @@ ansible_host: 192.168.1.106
 ufw_allow:
   - port: "8081"
     proto: tcp
+
+# run verify (playbooks/verify.yml)
+verify_units: [zigbee2mqtt]
+verify_http:
+  - url: http://127.0.0.1:8081/

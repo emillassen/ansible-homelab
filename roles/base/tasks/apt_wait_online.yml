@@ -1,0 +1,30 @@
+---
+# apt-daily and apt-daily-upgrade start with `apt-helper wait-online`, which runs the
+# systemd-networkd-wait-online binary whenever it is installed. Containers bring eth0 up
+# through ifupdown, not networkd, so it always times out after 30 s and logs an error.
+# The network is up from container start; an empty ExecStartPre drops the wait.
+- name: Create the apt timer drop-in directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d"
+    state: directory
+    mode: "0755"
+  loop:
+    - apt-daily
+    - apt-daily-upgrade
+
+- name: Skip apt's network wait
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item }}.service.d/no-wait-online.conf"
+    content: |
+      [Service]
+      ExecStartPre=
+    mode: "0644"
+  loop:
+    - apt-daily
+    - apt-daily-upgrade
+  register: base_apt_wait_online
+
+- name: Reload systemd for the apt drop-ins
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: base_apt_wait_online is changed

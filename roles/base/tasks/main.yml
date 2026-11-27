@@ -10,6 +10,10 @@
   ansible.builtin.import_tasks: ping.yml
   when: "'lxc' in group_names"
 
+- name: No network wait before apt in containers
+  ansible.builtin.import_tasks: apt_wait_online.yml
+  when: "'lxc' in group_names"
+
 - name: Timezone and locale
   ansible.builtin.import_tasks: time_locale.yml
 

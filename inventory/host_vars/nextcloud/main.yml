@@ -1,14 +1,27 @@
 ---
 vmid: 215
-legacy_host: nextcloud-old
 cores: 4
 memory: 8192
-disk_gb: 32
+# The clone is 32 GB; grown to 64 by hand (roles/nextcloud/README.md).
+disk_gb: 64
 mac_temp: "BC:24:11:36:DF:C4"
 mac_production: "BC:24:11:F7:63:2A"
 ip_production: 192.168.1.121
 ip_static: false
 startup: ""
-net_production: false
+net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
 ansible_host: 192.168.1.121
+# AIO creates its own containers, so the daemon default would be the only way to set
+# their log driver; they log to json-file, as before.
+docker_loki_default: false
+# Nextcloud trusts Caddy's X-Forwarded-For, so only Caddy may reach Apache. 8080 (the AIO
+# UI, behind its own login) stays on the LAN; 3478 (Talk's TURN) is AIO's own port.
+docker_user_filter:
+  - {port: 11000, allow: 192.168.1.88}
+
+# run verify (playbooks/verify.yml)
+verify_http:
+  - url: http://127.0.0.1:11000/status.php
+# AIO starts watchtower for its 05:00 update; it exits when done.
+verify_docker_exited_ok: [nextcloud-aio-watchtower]

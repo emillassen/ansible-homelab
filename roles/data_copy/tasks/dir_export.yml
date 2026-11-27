@@ -10,21 +10,11 @@
     that: data_copy_source.stat.isdir | default(false)
     fail_msg: "{{ data_copy_path }} is missing on {{ inventory_hostname }}"
 
-- name: Create the private archive directory
+# Left in root's home by runs before the archive moved to data_copy_archive_dir.
+- name: Delete an archive left by an older run
   ansible.builtin.file:
-    path: "{{ data_copy_archive_dir }}"
-    state: directory
-    owner: "{{ ansible_user }}"
-    mode: "0700"
-
-- name: Pack {{ data_copy_path }}
-  ansible.builtin.command:
-    cmd: >-
-      tar -C {{ data_copy_path }}
-      {% for e in data_copy_exclude %}--exclude=./{{ e | quote }} {% endfor %}
-      -czf {{ data_copy_archive }}
-      {% for i in data_copy_include %}{{ ('./' ~ i) | regex_replace('^\\./\\.$', '.') | quote }} {% endfor %}
-  changed_when: true
+    path: /root/migrate-{{ data_copy_name }}.tar.gz
+    state: absent
 
 - name: Create the staging directory on the controller
   ansible.builtin.file:
@@ -33,23 +23,57 @@
     mode: "0700"
   delegate_to: localhost
 
-# fetch under become reads the whole file into memory (slurp), which the controller
-# can't hold. Owned by the login user, it is fetched without become and streams.
-- name: Hand the archive to {{ ansible_user }}
-  ansible.builtin.file:
-    path: "{{ data_copy_archive }}"
-    owner: "{{ ansible_user }}"
-    mode: "0600"
-  when: not ansible_check_mode
+- name: Pack and fetch {{ data_copy_path }}
+  block:
+    - name: Create the private archive directory
+      ansible.builtin.file:
+        path: "{{ data_copy_archive_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        mode: "0700"
 
-- name: Fetch the archive
-  ansible.builtin.fetch:
-    src: "{{ data_copy_archive }}"
-    dest: "{{ data_copy_staging }}/{{ data_copy_name }}.tar.gz"
-    flat: true
-  become: false
+    - name: Pack {{ data_copy_path }}
+      ansible.builtin.command:
+        cmd: >-
+          tar -C {{ data_copy_path }}
+          {% if data_copy_keep_owners %}--numeric-owner {% endif %}
+          {% for e in data_copy_exclude %}--exclude=./{{ e | quote }} {% endfor %}
+          -czf {{ data_copy_archive }}
+          {% for i in data_copy_include %}{{ ('./' ~ i) | regex_replace('^\\./\\.$', '.') | quote }} {% endfor %}
+      changed_when: true
 
-- name: Delete the archive on the old guest
-  ansible.builtin.file:
-    path: "{{ data_copy_archive }}"
-    state: absent
+    # fetch under become reads the whole file into memory (slurp), which the controller
+    # can't hold. Owned by the login user, it is fetched without become and streams.
+    # ansible_become is an inventory variable on VMs, which beats the become keyword,
+    # so it is turned off as a task variable.
+    - name: Hand the archive to {{ ansible_user }}
+      ansible.builtin.file:
+        path: "{{ data_copy_archive }}"
+        owner: "{{ ansible_user }}"
+        mode: "0600"
+      when: not ansible_check_mode
+
+    - name: Fetch the archive
+      ansible.builtin.fetch:
+        src: "{{ data_copy_archive }}"
+        dest: "{{ data_copy_staging }}/{{ data_copy_name }}.tar.gz"
+        flat: true
+      vars:
+        ansible_become: false
+
+  rescue:
+    - name: Delete a partial copy on the controller
+      ansible.builtin.file:
+        path: "{{ data_copy_staging }}/{{ data_copy_name }}.tar.gz"
+        state: absent
+      delegate_to: localhost
+
+    - name: Stop after a failed export
+      ansible.builtin.fail:
+        msg: "Exporting {{ data_copy_path }} failed: {{ ansible_failed_result.msg | default('see above') }}"
+
+  always:
+    - name: Delete the archive on the old guest
+      ansible.builtin.file:
+        path: "{{ data_copy_archive }}"
+        state: absent

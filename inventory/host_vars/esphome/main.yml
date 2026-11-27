@@ -1,6 +1,5 @@
 ---
 vmid: 125
-legacy_host: esphome-old
 cores: 4
 memory: 4096
 disk_gb: 10
@@ -19,3 +18,8 @@ ufw_allow:
     proto: tcp
   - port: "5353"
     proto: udp
+
+# run verify (playbooks/verify.yml)
+verify_units: [esphome]
+verify_http:
+  - url: http://127.0.0.1:6052/

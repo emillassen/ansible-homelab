@@ -131,6 +131,14 @@ paperless.hjem.sh {
 	reverse_proxy 192.168.1.119:8000
 }
 
+pbs.hjem.sh {
+	reverse_proxy 192.168.1.122:8007 {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+}
+
 pdf.hjem.sh {
 	reverse_proxy 192.168.1.113:8080
 }

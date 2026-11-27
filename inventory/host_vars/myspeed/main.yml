@@ -1,6 +1,5 @@
 ---
 vmid: 123
-legacy_host: myspeed-old
 cores: 1
 memory: 1024
 disk_gb: 4
@@ -15,3 +14,8 @@ ansible_host: 192.168.1.110
 ufw_allow:
   - port: "5216"
     proto: tcp
+
+# run verify (playbooks/verify.yml)
+verify_units: [myspeed]
+verify_http:
+  - url: http://127.0.0.1:5216/

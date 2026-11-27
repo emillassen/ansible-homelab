@@ -1,0 +1,7 @@
+---
+# Uptime Kuma push monitor for the nightly `run verify`; the timer is left out while it is
+# empty. The token is the last part of the monitor's push URL.
+controller_verify_push_token: "{{ vault_kuma_verify_push_token | default('') }}"
+controller_verify_push_url: "http://{{ hostvars['uptime-kuma'].ansible_host }}:3001/api/push/{{ controller_verify_push_token }}"
+# After the 02:00 reboots, the 05:00 updates and the morning unattended-upgrades run.
+controller_verify_time: "07:30"

@@ -1,6 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", ":dependencyDashboard"],
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Copenhagen",
+  "minimumReleaseAge": "3 days",
   "automerge": false,
   "pip_requirements": {
     "managerFilePatterns": ["/(^|/)requirements(-[a-z]+)?\\.txt$/"]
@@ -13,13 +19,66 @@
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\n\\S+: \"?(?<currentValue>[^\"\\n]+)\"?"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Tool versions in the workflows, under a renovate comment",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n\\s+\\S+: \"?(?<currentValue>[^\"\\n]+)\"?"
+      ]
     }
   ],
   "packageRules": [
     {
+      "description": "Minor, patch and digest updates merge on their own once lint passes (Renovate merges on its own runs)",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "platformAutomerge": false
+    },
+    {
       "description": "Release tags with a v prefix; the pins in role defaults are bare versions",
-      "matchPackageNames": ["gnmyt/myspeed", "alam00000/bentopdf", "gethomepage/homepage", "WGDashboard/WGDashboard"],
+      "matchPackageNames": [
+        "gnmyt/myspeed",
+        "alam00000/bentopdf",
+        "gethomepage/homepage",
+        "WGDashboard/WGDashboard"
+      ],
       "extractVersion": "^v(?<version>.+)$"
+    },
+    {
+      "description": "A Postgres major needs a dump and restore, so it waits for approval on the dependency dashboard",
+      "matchPackageNames": ["postgres"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Immich server, machine learning and Valkey: one PR, read the release notes, merge by hand. Its Postgres image isn't extracted; update it from the upstream Compose file",
+      "matchFileNames": ["roles/immich/defaults/main.yml"],
+      "groupName": "immich",
+      "separateMajorMinor": false,
+      "automerge": false
+    },
+    {
+      "description": "Controller tooling takes effect at sync, not apply: minors and majors merge by hand, then sync and run check",
+      "matchFileNames": [
+        "requirements.txt",
+        "requirements-uv.txt",
+        "requirements.yml"
+      ],
+      "automerge": false,
+      "matchUpdateTypes": ["minor", "major"]
+    },
+    {
+      "description": "Gotenberg follows the version Paperless's upstream Compose file uses (8.x); move the limit by hand when it does",
+      "matchPackageNames": ["gotenberg/gotenberg"],
+      "allowedVersions": "<9"
+    },
+    {
+      "description": "CI only: the workflow and its tools merge on their own, majors too. A version that breaks CI fails lint and isn't merged",
+      "matchFileNames": [".github/workflows/**"],
+      "automerge": true,
+      "platformAutomerge": false
     }
   ]
 }

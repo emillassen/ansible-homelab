@@ -102,3 +102,34 @@
   roles:
     - loki
     - grafana
+
+- name: MeshMonitor
+  hosts: managed:&meshmonitor
+  roles:
+    - meshmonitor
+
+- name: Miniflux and Linkding
+  hosts: managed:&miniflux-linkding
+  roles:
+    - miniflux
+    - linkding
+
+- name: Audiobookshelf
+  hosts: managed:&audiobookshelf
+  roles:
+    - audiobookshelf
+
+- name: Paperless
+  hosts: managed:&paperless
+  roles:
+    - paperless
+
+- name: Immich
+  hosts: managed:&immich
+  roles:
+    - immich
+
+- name: Nextcloud
+  hosts: managed:&nextcloud
+  roles:
+    - nextcloud

@@ -1,14 +1,18 @@
 ---
 vmid: 211
-legacy_host: miniflux-linkding-old
 cores: 2
-memory: 4096
+memory: 2048
 disk_gb: 32
 mac_temp: "BC:24:11:4F:B3:50"
 mac_production: "BC:24:11:C0:78:F2"
 ip_production: 192.168.1.114
 ip_static: false
 startup: ""
-net_production: false
+net_production: true
 # Set to the temporary DHCP address after provision, back to ip_production at cutover.
 ansible_host: 192.168.1.114
+
+# run verify (playbooks/verify.yml)
+verify_http:
+  - url: http://127.0.0.1/healthcheck
+  - url: http://127.0.0.1:9090/health

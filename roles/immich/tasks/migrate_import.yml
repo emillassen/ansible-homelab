@@ -1,0 +1,80 @@
+---
+- name: Check for an earlier restore
+  ansible.builtin.stat:
+    path: "{{ immich_marker }}"
+  register: immich_restored
+
+- name: Refuse to restore over a restored database
+  ansible.builtin.assert:
+    that: not immich_restored.stat.exists
+    fail_msg: "Already restored. Delete {{ immich_marker }} on {{ inventory_hostname }} to restore again."
+
+# The dump is only passing through, guarded by the marker above, so a dump left by a
+# failed restore is dropped and the restore can simply be run again.
+- name: Delete a dump left by a failed restore
+  ansible.builtin.file:
+    path: "{{ immich_restore_dir }}"
+    state: absent
+
+- name: Import the dump
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_import
+  vars:
+    data_copy_name: immich
+    data_copy_path: "{{ immich_restore_dir }}"
+
+# Immich's restore: into a fresh database with nothing else running, search_path
+# fixed for the extensions, one transaction that stops at the first error.
+# The server isn't started: the library only mounts on the production address.
+- name: Restore the database
+  when: not ansible_check_mode
+  block:
+    - name: Stop the server and machine learning
+      community.docker.docker_compose_v2:
+        project_src: "{{ immich_project }}"
+        services: [immich-server, immich-machine-learning]
+        state: stopped
+
+    - name: Start the database
+      community.docker.docker_compose_v2:
+        project_src: "{{ immich_project }}"
+        services: [database]
+        pull: missing
+        state: present
+        wait: true
+
+    - name: Restore the dump
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          gunzip --stdout {{ immich_restore_dir }}/immich.sql.gz
+          | sed "s/SELECT pg_catalog.set_config('search_path', '', false);/SELECT pg_catalog.set_config('search_path', 'public, pg_catalog', true);/g"
+          | docker compose exec -T database psql --dbname=immich --username=postgres
+          --single-transaction --set ON_ERROR_STOP=on --quiet > /dev/null
+        chdir: "{{ immich_project }}"
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Count the restored assets
+      ansible.builtin.command:
+        cmd: docker compose exec -T database psql --username=postgres --dbname=immich -tAc "select count(*) from asset"
+        chdir: "{{ immich_project }}"
+      register: immich_new_assets
+      changed_when: false
+
+    - name: Check the restore against the old database
+      ansible.builtin.assert:
+        that: immich_new_assets.stdout | trim | int == hostvars[legacy_host].immich_asset_count | int
+        fail_msg: "Restored {{ immich_new_assets.stdout | trim }} assets, the old database has {{ hostvars[legacy_host].immich_asset_count }}"
+
+    - name: Mark the restore done
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ immich_marker }}"
+        mode: "0644"
+
+    - name: Delete the dump
+      ansible.builtin.file:
+        path: "{{ immich_restore_dir }}"
+        state: absent

@@ -1,0 +1,40 @@
+---
+- name: Mount the books shares
+  ansible.builtin.include_role:
+    name: nfs_automount
+  vars:
+    nfs_automount_shares: "{{ audiobookshelf_nfs }}"
+
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ audiobookshelf_project }}"
+    state: directory
+    owner: emil
+    group: emil
+    mode: "0755"
+
+- name: Write the compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ audiobookshelf_project }}/docker-compose.yml"
+    owner: emil
+    group: emil
+    mode: "0644"
+  register: audiobookshelf_compose
+
+- name: Check for the migrated data
+  ansible.builtin.stat:
+    path: "{{ audiobookshelf_marker }}"
+  register: audiobookshelf_migrated
+
+# Without the copied data it would start a new, empty Audiobookshelf; without the
+# shares it would see every book as missing.
+- name: Run Audiobookshelf once its data and the shares are here
+  community.docker.docker_compose_v2:
+    project_src: "{{ audiobookshelf_project }}"
+    pull: missing
+    state: present
+  when:
+    - net_production
+    - audiobookshelf_migrated.stat.exists
+    - not ansible_check_mode or (docker_present and audiobookshelf_compose is not changed)

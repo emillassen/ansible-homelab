@@ -1,6 +1,5 @@
 ---
 vmid: 122
-legacy_host: homepage-old
 cores: 2
 memory: 4096
 disk_gb: 6
@@ -15,3 +14,8 @@ ansible_host: 192.168.1.108
 ufw_allow:
   - port: "3000"
     proto: tcp
+
+# run verify (playbooks/verify.yml)
+verify_units: [homepage]
+verify_http:
+  - url: http://127.0.0.1:3000/

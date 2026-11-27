@@ -1,0 +1,19 @@
+---
+# On the old VM. Stopping Audiobookshelf starts its outage. absdatabase.sqlite is
+# SQLite, so config/ and metadata/ are copied with Audiobookshelf stopped.
+- name: Stop Audiobookshelf on the old VM
+  ansible.builtin.command:
+    cmd: docker compose stop
+    chdir: "{{ audiobookshelf_project }}"
+  changed_when: true
+
+- name: Export config/ and metadata/
+  ansible.builtin.include_role:
+    name: data_copy
+    tasks_from: dir_export
+  vars:
+    data_copy_name: audiobookshelf-{{ audiobookshelf_dir }}
+    data_copy_path: "{{ audiobookshelf_project }}/{{ audiobookshelf_dir }}"
+  loop: [config, metadata]
+  loop_control:
+    loop_var: audiobookshelf_dir
