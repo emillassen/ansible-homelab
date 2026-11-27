@@ -8,13 +8,6 @@
       - python3
     state: present
 
-- name: Install pnpm {{ zigbee2mqtt_pnpm_version }}
-  community.general.npm:
-    name: pnpm
-    version: "{{ zigbee2mqtt_pnpm_version }}"
-    global: true
-  when: not ansible_check_mode or 'nodejs' in ansible_facts.packages
-
 - name: Create the zigbee2mqtt user
   ansible.builtin.user:
     name: zigbee2mqtt
@@ -103,6 +96,36 @@
     - zigbee2mqtt_install
     - not ansible_check_mode
   notify: Restart zigbee2mqtt
+
+# The tag's package.json names the pnpm it's built with ("packageManager": "pnpm@X[+hash]"),
+# so pnpm follows the Zigbee2MQTT tag instead of a separate pin.
+- name: Read the tag's package.json
+  ansible.builtin.slurp:
+    src: "{{ zigbee2mqtt_dir }}/package.json"
+  register: zigbee2mqtt_package
+  when:
+    - zigbee2mqtt_install
+    - not ansible_check_mode
+
+- name: Check the tag names an exact pnpm version
+  ansible.builtin.assert:
+    that: zigbee2mqtt_pnpm_spec is match('^pnpm@[0-9]+[.][0-9]+[.][0-9]+([+].+)?$')
+    fail_msg: "packageManager in package.json is '{{ zigbee2mqtt_pnpm_spec }}', not pnpm@X.Y.Z"
+    quiet: true
+  vars:
+    zigbee2mqtt_pnpm_spec: "{{ (zigbee2mqtt_package.content | b64decode | from_json).packageManager | default('') | string }}"
+  when:
+    - zigbee2mqtt_install
+    - not ansible_check_mode
+
+- name: Install the pnpm the tag asks for
+  community.general.npm:
+    name: pnpm
+    version: "{{ (zigbee2mqtt_package.content | b64decode | from_json).packageManager.split('@')[1].split('+')[0] }}"
+    global: true
+  when:
+    - zigbee2mqtt_install
+    - not ansible_check_mode
 
 # pnpm-workspace.yaml lists which dependencies may run build scripts.
 - name: Install the dependencies

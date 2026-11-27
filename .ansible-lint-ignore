@@ -1,0 +1,21 @@
+# This file contains ignores rule violations for ansible-lint
+playbooks/verify.yml command-instead-of-module
+roles/base/tasks/apt_wait_online.yml no-handler
+roles/base/tasks/ssh.yml yaml[line-length]
+roles/caddy/tasks/main.yml name[template]
+roles/controller/tasks/main.yml no-handler
+roles/data_copy/tasks/dir_export.yml command-instead-of-module
+roles/data_copy/tasks/dir_export.yml name[template]
+roles/data_copy/tasks/dir_import.yml name[template]
+roles/docker_host/defaults/main.yml var-naming[no-role-prefix]
+roles/docker_host/tasks/main.yml var-naming[no-role-prefix]
+roles/homepage/tasks/main.yml name[template]
+roles/homepage/tasks/main.yml no-changed-when
+roles/myspeed/tasks/main.yml no-changed-when
+roles/nextcloud/tasks/migrate_import.yml risky-shell-pipe
+roles/nfs_automount/tasks/main.yml no-handler
+roles/nodejs/tasks/main.yml name[template]
+roles/uptime_kuma/tasks/main.yml name[template]
+roles/uptime_kuma/tasks/main.yml no-changed-when
+roles/zigbee2mqtt/tasks/main.yml name[template]
+roles/zigbee2mqtt/tasks/main.yml no-changed-when

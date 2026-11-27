@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly run verify, reported to Uptime Kuma
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ansible
+EnvironmentFile=/etc/ansible-verify.env
+ExecStart=/usr/local/sbin/ansible-verify-push

@@ -18,3 +18,9 @@ ufw_allow:
     proto: udp
   - port: "80"
     proto: tcp
+
+# run verify (playbooks/verify.yml)
+verify_units: [adguardhome]
+verify_http:
+  - url: http://127.0.0.1/login.html
+verify_tcp: [53]

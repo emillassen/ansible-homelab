@@ -104,6 +104,71 @@
       dest: ansible-run
     - src: agent-shell
       dest: agent-shell
+    - src: verify-push
+      dest: ansible-verify-push
+
+- name: Nightly verify to Uptime Kuma
+  when: controller_verify_push_token != ""
+  block:
+    # Root-only; systemd reads it before dropping to ansible.
+    - name: Write the push URL
+      ansible.builtin.copy:
+        content: "KUMA_PUSH_URL={{ controller_verify_push_url }}\n"
+        dest: /etc/ansible-verify.env
+        owner: root
+        group: root
+        mode: "0600"
+      diff: false
+      no_log: true
+
+    - name: Install the verify service and timer
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        mode: "0644"
+      loop:
+        - ansible-verify.service
+        - ansible-verify.timer
+      register: controller_verify_units
+
+    - name: Start the verify timer
+      ansible.builtin.systemd_service:
+        name: ansible-verify.timer
+        enabled: true
+        state: started
+        daemon_reload: "{{ controller_verify_units is changed }}"
+      # Check mode doesn't write the units, so on a first install there is no timer yet.
+      when: not (ansible_check_mode and controller_verify_units is changed)
+
+- name: Remove the nightly verify without a token
+  when: controller_verify_push_token == ""
+  block:
+    - name: Look for the verify timer
+      ansible.builtin.stat:
+        path: /etc/systemd/system/ansible-verify.timer
+      register: controller_verify_timer
+
+    - name: Stop the verify timer
+      ansible.builtin.systemd_service:
+        name: ansible-verify.timer
+        enabled: false
+        state: stopped
+      when: controller_verify_timer.stat.exists
+
+    - name: Remove the verify units and push URL
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/ansible-verify.service
+        - /etc/systemd/system/ansible-verify.timer
+        - /etc/ansible-verify.env
+      register: controller_verify_removed
+
+    - name: Reload systemd after removing the verify units
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: controller_verify_removed is changed
 
 - name: Rotate the Ansible log
   ansible.builtin.copy:
