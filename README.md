@@ -278,7 +278,35 @@ It must list exactly `/pool/ansible`, `/vms/903`, `/storage/local-zfs`, `/storag
 
 ### GitHub: Renovate
 
-Install the Renovate app on the repo. It opens a dependency dashboard issue and one PR per bump. Nothing merges on its own.
+Install the Renovate app on the repo. It opens a dependency dashboard issue and one PR per bump. An update only merges once the release is 3 days old (`minimumReleaseAge`).
+
+Renovate merges minor, patch and digest updates itself once `lint` passes. It waits for that by its own runs, so a merge can take a few hours. These still wait for you:
+
+1. Majors. A Postgres major waits for approval on the dependency dashboard first.
+1. Immich: server, machine learning and Valkey come as one PR. Its Postgres image isn't tracked; update it from the matching upstream Compose file.
+1. The root `requirements.txt`, `requirements-uv.txt` and `requirements.yml`, which take effect at `sync`.
+
+A merge changes `main` only. Nothing deploys until `sync` and `apply`.
+
+### GitHub: CI and the ruleset on `main`
+
+`.github/workflows/lint.yml` runs on every PR and every push to `main`:
+
+1. `ansible-playbook --syntax-check` on every playbook, without the vault password
+1. `ansible-lint`, with existing findings in `.ansible-lint-ignore`. Fix one and delete its line. Don't add new lines.
+1. `shellcheck` on every tracked shell script
+1. `renovate-config-validator --strict`
+
+The ruleset on `main` requires a PR and a passing `lint` check, with no approvals required and no bypass. Every change, yours too, goes through a PR:
+
+```sh
+git switch -c <topic>
+git push -u origin <topic>
+gh pr create --fill
+gh pr merge --auto --squash   # merges when lint passes
+```
+
+Repo setting: auto-merge allowed, head branches deleted after merge.
 
 ## Add a service
 
@@ -358,15 +386,14 @@ ssh ansible-controller run apply --limit <host>
 
 ## Apply a Renovate PR
 
-1. Read the PR and the upstream release notes, then merge it.
-1. Then:
+Renovate merges most PRs itself (see "GitHub: Renovate"). Deploy them like this; for a PR it left to you, read the PR and the upstream release notes first, then merge it.
 
-   ```sh
-   ssh ansible-controller sync
-   ssh ansible-controller run check --limit <host>
-   ssh ansible-controller run apply --limit <host>
-   ssh ansible-controller run verify --limit <host>
-   ```
+```sh
+ssh ansible-controller sync
+ssh ansible-controller run check --limit <host>
+ssh ansible-controller run apply --limit <host>
+ssh ansible-controller run verify --limit <host>
+```
 
 A bump to `ansible-core`, `uv` or a collection takes effect at `sync`. Follow it with `run check` with no `--limit`. A change to `scripts/` reaches `113` only at `run apply --limit ansible-controller`.
 
@@ -457,15 +484,15 @@ Every guest is backed up at 23:30 to Proxmox Backup Server (PBS), VM `217`. PBS 
 
 PBS is set up by hand from these steps and is not managed by this repo: the controller is restored from PBS, so PBS has to be rebuildable without Ansible. It is not in the `ansible` pool, so the controller's token can't touch it.
 
-| | |
-| --- | --- |
-| VM | `217`, name `pbs`, 2 cores, 4 GB RAM, 32 GB disk |
-| Address | `pbs.hjem.sh`, `192.168.1.122`, MAC `BC:24:11:B4:B5:EA` |
-| Web UI | `https://pbs.hjem.sh` (through Caddy) or `https://192.168.1.122:8007`, user `root@pam` |
-| Datastore | `homelab` at `/mnt/pbs/homelab`, on Holocron's `proxmox-backup-server` share |
-| Proxmox storage | `pbs`, token `pve@pbs!pve` |
-| Retention | 14 daily, 8 weekly, 6 monthly |
-| In the password manager | PBS root password, token secret, PBS fingerprint |
+|                         |                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| VM                      | `217`, name `pbs`, 2 cores, 4 GB RAM, 32 GB disk                                       |
+| Address                 | `pbs.hjem.sh`, `192.168.1.122`, MAC `BC:24:11:B4:B5:EA`                                |
+| Web UI                  | `https://pbs.hjem.sh` (through Caddy) or `https://192.168.1.122:8007`, user `root@pam` |
+| Datastore               | `homelab` at `/mnt/pbs/homelab`, on Holocron's `proxmox-backup-server` share           |
+| Proxmox storage         | `pbs`, token `pve@pbs!pve`                                                             |
+| Retention               | 14 daily, 8 weekly, 6 monthly                                                          |
+| In the password manager | PBS root password, token secret, PBS fingerprint                                       |
 
 The steps below set it up from scratch. After losing the Proxmox host, follow them too, with the changes in "After losing the Proxmox host".
 
@@ -482,6 +509,7 @@ Skip this if the share already exists (after losing only the Proxmox host, it do
    ```
 
    `no_root_squash` is required: PBS creates the datastore as root and hands it to its `backup` user (uid 34). Without it, creating the datastore fails with `EPERM`.
+
 1. Check in the Unraid terminal that the line has `no_root_squash` and no `all_squash`:
 
    ```sh
@@ -684,6 +712,7 @@ The backups are still on Holocron. Rebuild in this order:
    ```
 
    Start the guests (`pct start <id>` / `qm start <id>`), or reboot the host so `onboot` starts them in order.
+
 1. Check from the laptop. It should show nothing to do:
 
    ```sh
@@ -694,7 +723,7 @@ The backups are still on Holocron. Rebuild in this order:
 
 1. The controller key is root on every LXC and passwordless-sudo `emil` on every VM. Whoever holds `113` holds the fleet. SSH to `113` is key-only, from `.103`, `.42`, `.102` and `.225`.
 1. The vault password sits in plain text in `/home/ansible/.vault-pass` (0600). It and the controller key reach Holocron in `113`'s nightly backup.
-1. The `207` key has no passphrase. It can run `sync`, `check` and `apply`, not `provision` or `migrate`. With `207`'s account-wide `gh` token, an agent could push to `main` and apply it; "I merge" is a process rule, not a technical one.
+1. The `207` key has no passphrase. It can run `sync`, `check` and `apply`, not `provision` or `migrate`. With `207`'s account-wide `gh` token, an agent can't push to `main` (the ruleset requires a PR with a passing `lint`), but it can open and merge its own PR and then apply it; "I merge" is a process rule, not a technical one.
 1. New guests' host keys are trusted on first scan, over the LAN, right after creation.
 1. The token's `VM.Allocate` on the pool can delete pool guests. No task uses `state: absent`.
 1. VMs have no host firewall. SSH there is key-only but reachable from the whole LAN.
@@ -704,7 +733,8 @@ The backups are still on Holocron. Rebuild in this order:
 1. Nextcloud AIO updates itself daily, as upstream recommends.
 1. The repo is public: IPs, MACs and public keys are visible, and the vault files can be attacked offline. The vault password must be long and random.
 1. Python packages are pinned by version, not hash. Galaxy collections are not signature-checked.
-1. A merged Renovate PR goes live on the next `apply`, breaking changes included.
+1. A merged Renovate PR goes live on the next `apply`, breaking changes included. Minor, patch and digest updates merge without review; `lint` checks syntax and style, not whether the new version works.
+1. Third-party apt repos (Docker, Jellyfin, NodeSource) can ship a major through unattended-upgrades, outside Renovate.
 1. Backups are on Holocron, in the same house, with no off-site copy. PBS doesn't encrypt them; Holocron's disk encryption covers stolen or discarded disks, not access to the running Holocron or the share.
 1. PBS doesn't hold the NFS-backed app data (Immich library, Nextcloud data, books) or Jellyfin's media; backing those up is Holocron's job.
 
