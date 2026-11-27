@@ -1,7 +1,8 @@
 ---
 # From the mosquitto.org apt repo, updated by unattended-upgrades, so nothing is pinned here.
 mosquitto_listen_port: 1883
-# Copied from the old guest by `run migrate`. The broker stays stopped until it exists.
 mosquitto_passwd: /etc/mosquitto/passwd
+# The password file's lines (user:hash, made with mosquitto_passwd), from the vault.
+mosquitto_passwd_content: "{{ vault_mosquitto_passwd }}"
 mosquitto_db: /var/lib/mosquitto/mosquitto.db
 mosquitto_staging: /home/ansible/transfer/mosquitto

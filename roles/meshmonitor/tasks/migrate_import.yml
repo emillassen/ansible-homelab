@@ -2,7 +2,7 @@
 # Written before the data, whose marker ends the import.
 - name: Write the session secret
   ansible.builtin.copy:
-    content: "SESSION_SECRET={{ hostvars[legacy_host].meshmonitor_session_secret }}\n"
+    content: "SESSION_SECRET={{ meshmonitor_session_secret }}\n"
     dest: "{{ meshmonitor_project }}/.env"
     owner: emil
     group: emil

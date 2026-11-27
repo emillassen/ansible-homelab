@@ -39,12 +39,25 @@
   notify: Restart mosquitto
   when: not ansible_check_mode or 'mosquitto' in ansible_facts.packages
 
+# A device login is added by running mosquitto_passwd on a scratch file and putting
+# the line in vault_mosquitto_passwd.
+- name: Write the password file
+  ansible.builtin.copy:
+    content: "{{ mosquitto_passwd_content }}"
+    dest: "{{ mosquitto_passwd }}"
+    owner: mosquitto
+    group: mosquitto
+    mode: "0600"
+  no_log: true
+  notify: Restart mosquitto
+  when: not ansible_check_mode or 'mosquitto' in ansible_facts.packages
+
 - name: Check for the password file
   ansible.builtin.stat:
     path: "{{ mosquitto_passwd }}"
   register: mosquitto_passwd_file
 
-# Mosquitto won't start without its password file, which arrives with `run migrate`.
+# Mosquitto won't start without its password file.
 - name: Start Mosquitto once it has its password file
   ansible.builtin.service:
     name: mosquitto

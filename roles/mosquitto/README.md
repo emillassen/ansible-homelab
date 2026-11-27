@@ -1,6 +1,6 @@
 # mosquitto
 
-Mosquitto from the mosquitto.org apt repo, updated by unattended-upgrades. The listener config comes from this role. The password file and `mosquitto.db` (retained messages and persistent sessions) are data: `run migrate` copies them, and the broker stays stopped until the password file exists.
+Mosquitto from the mosquitto.org apt repo, updated by unattended-upgrades. The listener config comes from this role. The password file comes from `vault_mosquitto_passwd`. `mosquitto.db` (retained messages and persistent sessions) is data: `run migrate` copies it.
 
 The repo's signing key is kept in `files/mosquitto-repo.gpg` and expires on 2030-07-10. To replace it, download the new key, check its fingerprint against the one on mosquitto.org and commit it:
 
@@ -9,11 +9,10 @@ curl -fo roles/mosquitto/files/mosquitto-repo.gpg https://repo.mosquitto.org/deb
 gpg --show-keys roles/mosquitto/files/mosquitto-repo.gpg
 ```
 
-To add or change a user, on the guest:
+To add or change a user, make the line on the guest without touching the live file, then put it in `vault_mosquitto_passwd` and apply:
 
 ```sh
-mosquitto_passwd /etc/mosquitto/passwd <user>
-systemctl restart mosquitto
+mosquitto_passwd -c /tmp/p <user> && cat /tmp/p && rm /tmp/p
 ```
 
 ## Resources

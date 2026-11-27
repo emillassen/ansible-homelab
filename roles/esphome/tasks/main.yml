@@ -60,9 +60,7 @@
     and 'python3-venv' in ansible_facts.packages and 'python3-packaging' in ansible_facts.packages)
   notify: Restart esphome
 
-# The dashboard can read secrets.yaml and flash every device, so it has a login. Picked
-# on the first apply and kept on the guest (force: false), never vaulted: read it with
-# `cat /etc/esphome/dashboard.env`.
+# The dashboard can read secrets.yaml and flash every device, so it has a login.
 - name: Create the dashboard login directory
   ansible.builtin.file:
     path: /etc/esphome
@@ -71,16 +69,15 @@
     group: root
     mode: "0700"
 
-- name: Generate the dashboard login
+- name: Write the dashboard login
   ansible.builtin.copy:
     content: |
       ESPHOME_USERNAME={{ esphome_dashboard_username }}
-      ESPHOME_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', length=24, chars=['ascii_letters', 'digits']) }}
+      ESPHOME_PASSWORD={{ esphome_dashboard_password }}
     dest: /etc/esphome/dashboard.env
     owner: root
     group: root
     mode: "0600"
-    force: false
   no_log: true
   notify: Restart esphome
 

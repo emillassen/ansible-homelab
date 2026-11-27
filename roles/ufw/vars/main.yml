@@ -9,3 +9,37 @@ ufw_allow_rules: >-
   {%- endfor -%}
   {%- endfor -%}
   {{ out }}
+
+# The rules this role wants, as `ufw show added` prints them.
+ufw_wanted: >-
+  {%- set out = [] -%}
+  {%- for s in ufw_ssh_sources -%}
+  {%- set _ = out.append('ufw allow from ' ~ s ~ ' to any port 22 proto tcp') -%}
+  {%- endfor -%}
+  {%- for r in ufw_allow_rules -%}
+  {%- if r.from == 'any' -%}
+  {%- set _ = out.append('ufw allow ' ~ r.port ~ '/' ~ r.proto) -%}
+  {%- else -%}
+  {%- set _ = out.append('ufw allow from ' ~ r.from ~ ' to any port ' ~ r.port ~ ' proto ' ~ r.proto) -%}
+  {%- endif -%}
+  {%- endfor -%}
+  {{ out }}
+
+# Rules on the guest that aren't wanted: the ones in a shape this role writes, parsed for
+# deletion, and the rest, which are only reported.
+ufw_held: "{{ (ufw_added.stdout_lines | default([])) | select('match', '^ufw ') | reject('in', ufw_wanted) | list }}"
+ufw_extra: >-
+  {%- set out = [] -%}
+  {%- for l in ufw_held -%}
+  {%- set a = l | regex_search('^ufw allow from ([0-9./]+) to any port ([0-9]+) proto (tcp|udp)$', '\\1', '\\2', '\\3') -%}
+  {%- set b = l | regex_search('^ufw allow ([0-9]+)/(tcp|udp)$', '\\1', '\\2') -%}
+  {%- if a -%}
+  {%- set _ = out.append({'from': a[0], 'port': a[1], 'proto': a[2]}) -%}
+  {%- elif b -%}
+  {%- set _ = out.append({'from': 'any', 'port': b[0], 'proto': b[1]}) -%}
+  {%- endif -%}
+  {%- endfor -%}
+  {{ out }}
+ufw_unknown: >-
+  {{ ufw_held | reject('match', '^ufw allow from [0-9./]+ to any port [0-9]+ proto (tcp|udp)$')
+  | reject('match', '^ufw allow [0-9]+/(tcp|udp)$') | list }}

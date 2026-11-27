@@ -11,18 +11,17 @@
     - "{{ paperless_project }}/consume"
     - "{{ paperless_project }}/export"
 
-# Only the containers use them, so they're made here, never copied or vaulted.
-# Postgres reads the password once, when it creates the database.
-- name: Generate the database password and secret key
+# Postgres reads the password once, when it creates the database: changing it in the
+# vault later doesn't change the database's password.
+- name: Write the database password and secret key
   ansible.builtin.copy:
     content: |
-      PAPERLESS_DB_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}
-      PAPERLESS_SECRET_KEY={{ lookup('ansible.builtin.password', '/dev/null', length=64, chars=['ascii_letters', 'digits']) }}
+      PAPERLESS_DB_PASSWORD={{ paperless_db_password }}
+      PAPERLESS_SECRET_KEY={{ paperless_secret_key }}
     dest: "{{ paperless_project }}/.env"
     owner: emil
     group: emil
     mode: "0600"
-    force: false
   no_log: true
 
 - name: Write the compose file

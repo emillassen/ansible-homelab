@@ -4,7 +4,7 @@ MeshMonitor in Docker Compose, image pinned in `defaults/main.yml` (Renovate upd
 
 The source is the Seeed XIAO nRF52840 (MeshCore USB companion) on the Proxmox host, passed through to the VM. MeshMonitor runs only once `run migrate` has copied its data and the VM has the device.
 
-`data/` (meshmonitor.db, backups, Apprise config) is data: `run migrate` copies it with the old MeshMonitor stopped. `SESSION_SECRET` seals the stored device keys and saved passwords in the database, so migrate copies it too, into `.env` (0600). The pinned version can't be older than the one that last wrote `meshmonitor.db`.
+`data/` (meshmonitor.db, backups, Apprise config) is data: `run migrate` copies it with the old MeshMonitor stopped. `SESSION_SECRET` seals the stored device keys and saved passwords in the database, so it must never change: it is `vault_meshmonitor_session_secret`, written to `.env` (0600), and migrate refuses to start if the old VM's differs. The pinned version can't be older than the one that last wrote `meshmonitor.db`.
 
 ## Root paste (Proxmox host)
 

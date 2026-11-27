@@ -11,3 +11,4 @@ meshmonitor_uid: "1000"
 meshmonitor_marker: "{{ meshmonitor_project }}/data/.migrated"
 # What `run migrate` copies from. meshmonitor-old overrides it: its data is in a named volume.
 meshmonitor_export_data: "{{ meshmonitor_project }}/data"
+meshmonitor_session_secret: "{{ vault_meshmonitor_session_secret }}"

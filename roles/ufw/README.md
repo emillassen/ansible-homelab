@@ -15,7 +15,7 @@ ufw_allow:
 
 On the Docker VMs only SSH is in UFW: Docker's published ports skip the INPUT chain, so they are limited by `docker_user_filter` instead (roles/docker_host).
 
-When a port gains a `from`, the role deletes its old open-to-anyone rule. Otherwise it adds rules and never removes them: a port taken out of `ufw_allow`, or a source taken out of `from`, stays open until it is deleted by hand:
+The role owns the ruleset: a rule that isn't declared any more (a port taken out of `ufw_allow`, a source taken out of `from`, the old open rule of a port that gained a `from`) is deleted on the next apply, and `run check` shows it first. A rule in a shape the role doesn't write (a route rule, a port range) is left alone and printed, so delete it by hand if it's unwanted:
 
 ```sh
 ufw status numbered

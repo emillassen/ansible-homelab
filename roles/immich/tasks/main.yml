@@ -21,14 +21,9 @@
     group: emil
     mode: "0644"
 
-# Only the containers use it, so it's made here, never copied or vaulted.
-# Postgres reads it once, when it creates the database.
-- name: Pick a database password
-  ansible.builtin.set_fact:
-    immich_db_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}"
-  no_log: true
-
-- name: Generate the database password
+# Postgres reads it once, when it creates the database: changing it in the vault
+# later doesn't change the database's password.
+- name: Write the database password
   ansible.builtin.copy:
     content: |
       DB_PASSWORD={{ immich_db_password }}
@@ -37,7 +32,6 @@
     owner: emil
     group: emil
     mode: "0600"
-    force: false
   no_log: true
 
 - name: Write the compose file
