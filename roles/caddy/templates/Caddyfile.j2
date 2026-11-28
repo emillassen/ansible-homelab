@@ -1,6 +1,8 @@
 # Managed by Ansible (roles/caddy/templates/Caddyfile.j2).
 {
 	admin off
+	# lan_only's abort must run before smokeping's redir.
+	order abort before redir
 	email admin@hjem.sh
 	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	servers {
@@ -30,15 +32,26 @@
 	}
 }
 
+# Internal sites answer only the LAN (WireGuard peers arrive NAT'd as .102). remote_ip is
+# the connecting address, not a forwarded header, so Cloudflare can't relay to these.
+# Only nextcloud.indud.io, which comes in through Cloudflare, leaves this out.
+(lan_only) {
+	@outside not remote_ip 192.168.1.0/24
+	abort @outside
+}
+
 adguard.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.101:80
 }
 
 audiobookshelf.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.116:13378
 }
 
 bentopdf.hjem.sh {
+	import lan_only
 	reverse_proxy https://192.168.1.113:8443 {
 		transport http {
 			tls_insecure_skip_verify
@@ -47,22 +60,27 @@ bentopdf.hjem.sh {
 }
 
 changedetection.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.112:5000
 }
 
 esphome.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.107:6052
 }
 
 grafana.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.118:3000
 }
 
 ha.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.104:8123
 }
 
 hermes.hjem.sh {
+	import lan_only
 	@allowed remote_ip 192.168.1.102 192.168.1.42 192.168.1.151
 	handle @allowed {
 		handle_path /gateway/* {
@@ -76,10 +94,12 @@ hermes.hjem.sh {
 }
 
 hjem.sh, homepage.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.108:3000
 }
 
 immich.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.111:2283
 	# Unlimited uploads
 	request_body {
@@ -88,28 +108,34 @@ immich.hjem.sh {
 }
 
 jellyfin.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.115:8096 {
 		flush_interval -1
 	}
 }
 
 linkding.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.114:9090
 }
 
 loki.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.118:3100
 }
 
 meshmonitor.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.201:8080
 }
 
 miniflux.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.114:80
 }
 
 myspeed.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.110:5216
 }
 
@@ -129,10 +155,12 @@ nextcloud.indud.io {
 }
 
 paperless.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.119:8000
 }
 
 pbs.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.122:8007 {
 		transport http {
 			tls_insecure_skip_verify
@@ -141,10 +169,12 @@ pbs.hjem.sh {
 }
 
 pdf.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.113:8080
 }
 
 pve.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.100:8006 {
 		transport http {
 			tls_insecure_skip_verify
@@ -153,6 +183,7 @@ pve.hjem.sh {
 }
 
 smokeping.hjem.sh {
+	import lan_only
 	# The CGI isn't at /. Redirecting here keeps it on https; Apache's own redirect
 	# behind the proxy answers with an http:// Location.
 	redir / /smokeping/smokeping.cgi
@@ -160,14 +191,17 @@ smokeping.hjem.sh {
 }
 
 uptime.hjem.sh {
+	import lan_only
 	# Remember to Settings → Reverse Proxy → HTTP Headers and set Trust Proxy to Yes.
 	reverse_proxy 192.168.1.117:3001
 }
 
 wgd.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.102:10086
 }
 
 z2m.hjem.sh {
+	import lan_only
 	reverse_proxy 192.168.1.106:8081
 }
