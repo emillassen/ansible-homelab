@@ -266,8 +266,9 @@ def backups(c, pve, t):
         if task["endtime"] >= end.timestamp():
             ended = dt.datetime.fromtimestamp(task["endtime"]).strftime("%H:%M")
             return set(), f"tonight's backup ended at {ended}, after 00:30"
-        # "job errors" means some guests failed; the log says which. Anything else is the job.
-        if task.get("status") not in ("OK", "job errors"):
+        # "job errors" means some guests failed and "WARNINGS: n" that some logged a warning;
+        # the log says which guests finished. Anything else means the job itself failed.
+        if not re.fullmatch(r"OK|job errors|WARNINGS: \d+", task.get("status") or ""):
             return set(), f"tonight's backup ended with: {task.get('status')}"
         return parse_backup_log(lines), None
     return set(), f"no backup to {c['backup_storage']} started between 23:00 and 00:30"
