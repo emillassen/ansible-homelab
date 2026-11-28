@@ -1,0 +1,26 @@
+---
+# Package lists at 00:30 and installs at 01:00, after the 23:30 backup and before the
+# 02:00 reboot time and the 04:30 nightly deploy. No catch-up after downtime.
+- name: Create the apt timer drop-in directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item.timer }}.timer.d"
+    state: directory
+    mode: "0755"
+  loop: "{{ base_apt_timers }}"
+  loop_control:
+    label: "{{ item.timer }}"
+
+- name: Set the apt timer times
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.timer }}.timer.d/ansible-time.conf"
+    content: |
+      [Timer]
+      OnCalendar=
+      OnCalendar=*-*-* {{ item.time }}
+      RandomizedDelaySec=10min
+      Persistent=false
+    mode: "0644"
+  loop: "{{ base_apt_timers }}"
+  loop_control:
+    label: "{{ item.timer }}"
+  notify: Restart the apt timers
