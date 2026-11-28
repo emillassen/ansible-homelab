@@ -3,3 +3,7 @@
 uptime_kuma_version: "2.5.12"
 uptime_kuma_dir: /opt/uptime-kuma
 uptime_kuma_data: /opt/uptime-kuma/data
+
+# A second resolver that doesn't go through AdGuard, so alerts still reach Discord when
+# AdGuard is down. The gateway lets only this host reach it on port 53. "" turns it off.
+uptime_kuma_fallback_dns: 9.9.9.9
