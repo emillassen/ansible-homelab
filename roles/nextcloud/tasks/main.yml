@@ -90,13 +90,14 @@
     - nextcloud_apache.stdout == "stopped"
 
 # Before the migration the script would wait for a mastercontainer that never starts.
+# The nightly deploy holds the lock while it works on this guest, so AIO waits for it.
 - name: Update AIO and its containers at 05:00
   ansible.builtin.cron:
     name: Nextcloud AIO automatic updates
     user: root
     minute: "0"
     hour: "5"
-    job: /root/automatic-updates.sh
+    job: flock /run/lock/nextcloud-update.lock /root/automatic-updates.sh
   when:
     - net_production
     - nextcloud_migrated.stat.exists
