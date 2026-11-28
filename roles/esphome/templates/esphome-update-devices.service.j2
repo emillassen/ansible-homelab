@@ -1,0 +1,28 @@
+# Managed by Ansible. Started by the role after it installs a new ESPHome version;
+# start it by hand to retry: systemctl start esphome-update-devices
+[Unit]
+Description=Flash the ESPHome devices with the installed ESPHome
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=esphome
+Group=esphome
+WorkingDirectory={{ esphome_config }}
+Environment=HOME={{ esphome_home }}
+Environment=ESPHOME_CONFIG={{ esphome_config }}
+Environment=ESPHOME_BIN={{ esphome_venv }}/bin/esphome
+Environment=ESPHOME_UPDATE_LAST=/etc/esphome-update-last
+# The dashboard shares the build directory, so it's stopped while devices are flashed.
+ExecStartPre=+/usr/bin/systemctl stop esphome.service
+ExecStart=/usr/local/sbin/esphome-update-devices
+ExecStopPost=+/usr/bin/systemctl start esphome.service
+# A full set of compiles after a toolchain change takes a while.
+TimeoutStartSec=3h
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ esphome_home }}
