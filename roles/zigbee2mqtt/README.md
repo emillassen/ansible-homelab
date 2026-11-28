@@ -4,11 +4,11 @@ Zigbee2MQTT built from its pinned source tag with pnpm on NodeSource Node (the `
 
 The coordinator (`tcp://192.168.1.21:6638`) takes one client at a time, so the service is stopped and disabled until `net_production` is true *and* `data/configuration.yaml` exists. `run migrate` stops the old service, copies the whole `data/` directory (configuration with the network key, `database.db`, `coordinator_backup.json`, `state.json`) and leaves the new service stopped; the cutover apply starts it.
 
-Rollback before the old guest is deleted, on the Proxmox host. Disable the new service *first*: once 116 has run in production its unit is enabled, so any reboot (including the rollback's MAC swap) would reconnect it before an apply could stop it:
+Rollback during a rebuild, on the Proxmox host. Disable the new service *first*: once it has run in production its unit is enabled, so any reboot (including the rollback's MAC swap) would reconnect it before an apply could stop it:
 
 ```sh
-pct exec 116 -- systemctl disable --now zigbee2mqtt
-pct exec 104 -- systemctl start zigbee2mqtt   # after the old guest is back on its MAC and address
+pct exec <new> -- systemctl disable --now zigbee2mqtt
+pct exec <old> -- systemctl start zigbee2mqtt   # after the old guest is back on its MAC and address
 ```
  A second instance on the coordinator, or a new network key, means re-pairing every device.
 

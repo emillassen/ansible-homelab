@@ -8,6 +8,12 @@ Every `*.hjem.sh` site imports `lan_only`, which aborts any connection whose add
 
 The Cloudflare API token is `vault_caddy_cloudflare_api_token` in `inventory/group_vars/all/vault.yml`, written to `/etc/caddy/.env`. The Cloudflare origin pull CA in `files/` is public: https://developers.cloudflare.com/ssl/origin-configuration/authenticated-origin-pull/
 
+## Cloudflare
+
+1. The token: https://dash.cloudflare.com/profile/api-tokens → Create Token → Custom, name `Caddy`, permissions `Zone / Zone / Read` and `Zone / DNS / Edit`, zone resources `Include / Specific zone` for `hjem.sh` and `indud.io`. Put it in the vault.
+1. To roll it (after it was shown anywhere): Caddy → Roll on the same page, put the new value in the vault, then `run apply --limit caddy`. Issued certificates keep working; a wrong token shows up in `journalctl -u caddy` at the next renewal.
+1. Origin pull mTLS: on each zone, SSL/TLS → Origin Server → Authenticated Origin Pulls → On (Global).
+
 `/var/lib/caddy` (certificates, ACME accounts) is data: `run migrate` copies it while the old guest keeps serving, and Caddy stays stopped until it's there, so it doesn't order every certificate again.
 
 ## Resources
