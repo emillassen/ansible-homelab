@@ -42,3 +42,8 @@ base_purge_packages_vm:
 # the services still using the old copy at the end of every apt run. Ubuntu VMs ship it.
 base_lxc_packages:
   - needrestart
+
+# apt-daily refreshes the package lists, apt-daily-upgrade runs unattended-upgrades.
+base_apt_timers:
+  - { timer: apt-daily, time: "00:30" }
+  - { timer: apt-daily-upgrade, time: "01:00" }

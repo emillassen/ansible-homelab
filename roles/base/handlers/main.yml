@@ -24,3 +24,13 @@
   args:
     executable: /bin/bash
   changed_when: true
+
+# A restart makes the timer compute its next run from the new schedule.
+- name: Restart the apt timers
+  ansible.builtin.systemd_service:
+    name: "{{ item.timer }}.timer"
+    state: restarted
+    daemon_reload: true
+  loop: "{{ base_apt_timers }}"
+  loop_control:
+    label: "{{ item.timer }}"

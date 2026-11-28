@@ -743,7 +743,7 @@ The backups are still on Holocron. Rebuild in this order:
 1. New guests' host keys are trusted on first scan, over the LAN, right after creation.
 1. The token's `VM.Allocate` on the pool can delete pool guests. No task uses `state: absent`.
 1. The firewalls are inside the guests (UFW, and DOCKER-USER for published Docker ports), so root on a guest can turn its own off. Jellyfin, Mosquitto, AdGuard's DNS, Caddy, WireGuard's UDP port and Talk's TURN port stay open to the whole flat LAN, for the clients that use them directly.
-1. unattended-upgrades takes every origin, so third-party apt repos are not pinned. Guests reboot at 02:00 when needed.
+1. unattended-upgrades takes every origin, so third-party apt repos are not pinned. Lists refresh at 00:30, installs run at 01:00 and guests reboot at 02:00 when needed.
 1. The old community-scripts LXCs get no patches between removing the host cron and their rebuild.
 1. Until they are removed, the temporary laptop keys have no passphrase. Whoever copies it gets root on every guest, `run` on the controller (including `provision` and `migrate`), push to this repo and commits that show as verified.
 1. Nextcloud AIO updates itself daily, as upstream recommends.
