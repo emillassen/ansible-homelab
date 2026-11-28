@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
-# Pull the repo and copy it to /opt/ansible. Runs as the ansible user on the controller.
+# sync [SHA]: pull the repo (or fast-forward to exactly SHA, for the nightly deploy) and
+# copy it to /opt/ansible. Runs as the ansible user on the controller. The Python and
+# collection installs run only when the requirement files changed; their hash goes to
+# .tooling-installed after all three succeed, and run refuses without a matching one.
 set -Eeuo pipefail
 
 if [ "$(id -u)" -eq 0 ]; then
   exec runuser -u ansible -- "$0" "$@"
+fi
+
+target="${1:-}"
+if [ -n "$target" ] && ! [[ "$target" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "usage: sync [full commit SHA]" >&2
+  exit 64
 fi
 
 home=/home/ansible
@@ -27,11 +36,24 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-git pull --ff-only
+if [ -z "$target" ]; then
+  git pull --ff-only
+else
+  git fetch --quiet origin main
+  git merge-base --is-ancestor "$target" origin/main || { echo "refusing: $target is not on origin/main" >&2; exit 1; }
+  git merge-base --is-ancestor HEAD "$target" || { echo "refusing: $home/src is ahead of or diverged from $target" >&2; exit 1; }
+  git merge --quiet --ff-only "$target"
+fi
 rsync -a --delete --exclude .git "$home/src/" /opt/ansible/
 
-"$home/uv/bin/pip" install --quiet --disable-pip-version-check -r /opt/ansible/requirements-uv.txt
-"$home/uv/bin/uv" pip install --quiet --python "$home/venv" -r /opt/ansible/requirements.txt
-"$home/venv/bin/ansible-galaxy" collection install --upgrade -r /opt/ansible/requirements.yml -p "$home/collections"
+marker="$home/.tooling-installed"
+want=$(cd /opt/ansible && sha256sum requirements-uv.txt requirements.txt requirements.yml | sha256sum | cut -d' ' -f1)
+if [ "$(cat "$marker" 2>/dev/null)" != "$want" ]; then
+  rm -f "$marker"
+  "$home/uv/bin/pip" install --quiet --disable-pip-version-check -r /opt/ansible/requirements-uv.txt
+  "$home/uv/bin/uv" pip install --quiet --python "$home/venv" -r /opt/ansible/requirements.txt
+  "$home/venv/bin/ansible-galaxy" collection install --upgrade -r /opt/ansible/requirements.yml -p "$home/collections"
+  echo "$want" > "$marker"
+fi
 
 git log -1 --oneline
