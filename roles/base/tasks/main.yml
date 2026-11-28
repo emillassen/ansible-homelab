@@ -1,4 +1,8 @@
 ---
+- name: Nightly deploy guard
+  ansible.builtin.import_tasks: nightly_guard.yml
+  when: nightly | default(false) | bool
+
 - name: Packages
   ansible.builtin.import_tasks: packages.yml
 
