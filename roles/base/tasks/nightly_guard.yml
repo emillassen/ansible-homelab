@@ -1,0 +1,35 @@
+---
+# Nightly deploys (-e nightly=true) never reboot. Every reboot trigger in this role
+# (first_upgrade.yml: the first upgrade, and on VMs a netplan change) is checked here,
+# read-only and before any change, so such a guest fails untouched and is held for a
+# manual apply. A new reboot trigger needs a check here too.
+- name: Check for the first-upgrade marker before the nightly deploy
+  ansible.builtin.stat:
+    path: /var/lib/ansible-first-upgrade
+  register: base_guard_marker
+
+- name: Check whether the netplan would change
+  ansible.builtin.copy:
+    src: 60-ansible.yaml
+    dest: /etc/netplan/60-ansible.yaml
+    mode: "0600"
+  check_mode: true
+  register: base_guard_netplan
+  when: "'vm' in group_names"
+
+- name: Check for cloud-init's netplan
+  ansible.builtin.stat:
+    path: /etc/netplan/50-cloud-init.yaml
+  register: base_guard_netplan_old
+  when: "'vm' in group_names"
+
+- name: Refuse a nightly deploy that would reboot
+  ansible.builtin.assert:
+    that:
+      - base_guard_marker.stat.exists
+      - base_guard_netplan is not changed
+      - not (base_guard_netplan_old.stat.exists | default(false))
+    fail_msg: >-
+      needs a manual apply (it would reboot):
+      {{ 'no first-upgrade marker' if not base_guard_marker.stat.exists else 'the netplan would change' }}
+    quiet: true
