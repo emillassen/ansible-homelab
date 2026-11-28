@@ -13,9 +13,21 @@ The new guest holds the same server key as the old one, so the dashboard only ru
 
 The kernel module comes from the Proxmox host; an unprivileged container can't load it.
 
-## Rollback
+## Per-peer SSH
 
-On the Proxmox host: `pct shutdown 118`, then `pct set 101 --onboot 1 && pct start 101`. Its dashboard brings `wg0` up again.
+Every peer gets `192.168.1.0/24` and is masqueraded to `.102`, so the guests can't tell peers apart. The `FORWARD` chain can, because it runs before the NAT and WireGuard has already dropped any packet whose source isn't the peer's `AllowedIPs`. SSH through the tunnel is allowed only from `10.0.0.3` (work laptop) and `10.0.0.4` (`fw13`); `10.0.0.2` and `10.0.0.5` are phones.
+
+The rules are the `PostUp`/`PostDown` fields of `wg0` in WGDashboard (Home → `wg0` → edit), so they live in `wg0.conf`, which is data. Paste each field whole:
+
+```
+iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A FORWARD -o wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; sysctl -w net.ipv4.ip_forward=1; sysctl -w net.ipv6.conf.all.forwarding=1; iptables -I FORWARD -i wg0 -p tcp --dport 22 -j DROP; iptables -I FORWARD -i wg0 -s 10.0.0.3 -p tcp --dport 22 -j ACCEPT; iptables -I FORWARD -i wg0 -s 10.0.0.4 -p tcp --dport 22 -j ACCEPT;
+```
+
+```
+iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; iptables -D FORWARD -i wg0 -s 10.0.0.4 -p tcp --dport 22 -j ACCEPT; iptables -D FORWARD -i wg0 -s 10.0.0.3 -p tcp --dport 22 -j ACCEPT; iptables -D FORWARD -i wg0 -p tcp --dport 22 -j DROP;
+```
+
+`-I` puts the last rule first, so the order ends up `ACCEPT .4`, `ACCEPT .3`, `DROP 22`, then the blanket `ACCEPT`. `PostDown` must mirror `PostUp` exactly. Check with `pct exec 118 -- iptables -L FORWARD -n --line-numbers | head -8`, then from a denied peer: SSH times out, Immich still loads. To change the rules, run the `iptables` commands live with `pct exec 118 --` first (editing the fields restarts the tunnel), then paste the fields. A new peer can't SSH until it's added here.
 
 ## Resources
 
