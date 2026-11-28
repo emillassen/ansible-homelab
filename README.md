@@ -401,7 +401,7 @@ ssh ansible-controller run apply --limit <host>
 ssh ansible-controller run verify --limit <host>
 ```
 
-A bump to `ansible-core`, `uv` or a collection takes effect at `sync`. Follow it with `run check` with no `--limit`. A change to `scripts/` reaches `113` only at `run apply --limit ansible-controller`.
+A bump to `ansible-core`, `uv` or a collection takes effect at `sync`, which reinstalls the tooling only when a requirements file changed. If an install fails, `run` refuses until a `sync` succeeds. Follow a bump with `run check` with no `--limit`. A change to `scripts/` reaches `113` only at `run apply --limit ansible-controller`.
 
 ## Secrets
 

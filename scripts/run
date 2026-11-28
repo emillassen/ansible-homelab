@@ -63,6 +63,13 @@ esac
 exec 9>/home/ansible/run.lock
 flock -n 9 || { echo "busy: another sync or run holds the lock" >&2; exit 75; }
 
+# sync writes the hash after the tooling installs all succeed.
+want=$(cd /opt/ansible && sha256sum requirements-uv.txt requirements.txt requirements.yml | sha256sum | cut -d' ' -f1)
+if [ "$(cat "$home/.tooling-installed" 2>/dev/null)" != "$want" ]; then
+  echo "refusing: the installed tooling doesn't match /opt/ansible; run sync" >&2
+  exit 1
+fi
+
 export ANSIBLE_CONFIG=/opt/ansible/ansible.cfg
 export ANSIBLE_VAULT_PASSWORD_FILE="$home/.vault-pass"
 export ANSIBLE_COLLECTIONS_PATH="$home/collections"
