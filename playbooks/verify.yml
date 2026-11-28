@@ -10,6 +10,10 @@
 #   verify_tcp:        ports that must accept a connection on 127.0.0.1
 #   verify_interfaces: network links that must be up
 #   verify_docker_exited_ok: containers allowed to be stopped (one-shot jobs)
+#   verify_wait:       seconds an app may take to come up after a deploy (default 300)
+# With -e verify_poll=true (the nightly deploy) units, HTTP, TCP and containers are
+# retried every 10 s, verify_wait / 10 times each (longer if each try times out), and a
+# container still starting is not ready yet. Without it every check runs once.
 # Every guest also gets: no failed units, local disks under verify_disk_max_pct, no
 # reboot pending for over a day, no service left on replaced libraries (needrestart), and (Docker hosts) every container running and not unhealthy,
 # every published port in docker_user_filter or docker_published_open, and DOCKER-USER
@@ -21,6 +25,8 @@
     verify_disk_max_pct: 80
     # unattended-upgrades reboots at 02:00, so a newer request is expected, not a problem.
     verify_reboot_max_age_h: 26
+    # Not verify_wait itself: play vars would override host_vars.
+    verify_retries: "{{ ((verify_wait | default(300) | int) // 10) if verify_poll | default(false) | bool else 0 }}"
   tasks:
     - name: List failed units
       ansible.builtin.command: systemctl list-units --failed --no-legend --plain
@@ -34,6 +40,9 @@
       register: verify_unit_state
       changed_when: false
       failed_when: false
+      until: verify_unit_state.rc == 0
+      retries: "{{ verify_retries }}"
+      delay: 10
       check_mode: false
 
     - name: Measure local disks
@@ -69,6 +78,9 @@
         label: "{{ item.url }}"
       register: verify_http_result
       failed_when: false
+      until: verify_http_result.status == (item.status | default(200))
+      retries: "{{ verify_retries }}"
+      delay: 10
       check_mode: false
 
     - name: Connect to the TCP ports
@@ -79,6 +91,9 @@
       loop: "{{ verify_tcp | default([]) }}"
       register: verify_tcp_result
       failed_when: false
+      until: verify_tcp_result.state is defined
+      retries: "{{ verify_retries }}"
+      delay: 10
       check_mode: false
 
     - name: Check the network links
@@ -93,8 +108,17 @@
       ansible.builtin.command: docker ps -a --format json
       register: verify_containers
       changed_when: false
+      # Unhealthy containers are reported below with the rest; only a docker error fails here.
+      failed_when: verify_containers.rc != 0
       check_mode: false
       when: "'docker' in group_names"
+      until: >-
+        verify_containers.rc == 0 and
+        verify_containers.stdout_lines | map('from_json') | selectattr('Status', 'search', 'unhealthy|health: starting') | list | length == 0 and
+        verify_containers.stdout_lines | map('from_json') | rejectattr('State', 'eq', 'running')
+        | rejectattr('Names', 'in', verify_docker_exited_ok | default([])) | list | length == 0
+      retries: "{{ verify_retries }}"
+      delay: 10
 
     - name: Read the DOCKER-USER chain
       ansible.builtin.command: iptables -S DOCKER-USER
