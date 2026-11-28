@@ -4,10 +4,10 @@ Builds every LXC and Linux VM on the Proxmox host from scratch and moves each se
 
 Layout:
 
-1. `inventory/hosts.yml`: every guest. `site.yml` only touches hosts in `managed`; `legacy` is the old guests, used only to copy data.
+1. `inventory/hosts.yml`: every guest. `site.yml` only touches hosts in `managed`; `legacy` holds the old guest during a rebuild, used only to copy data.
 1. `inventory/host_vars/<host>/main.yml`: IDs, sizes, MACs, IPs, ports.
-1. `roles/base`, `roles/ufw`: every guest. `roles/controller`: `113`. One role per service from Phase 3 on.
-1. `scripts/`: `sync`, `run` and `agent-shell` for the controller, and `new-controller-keys.sh` for the laptop.
+1. `roles/base`, `roles/ufw`: every guest. `roles/controller`: `113`. One role per service.
+1. `scripts/`: `sync`, `run`, `agent-shell`, `verify-push` and `nightly` for the controller, and `new-controller-keys.sh` for the laptop.
 
 On the controller the commands are `ansible-sync` and `ansible-run`. Over SSH as `ansible` they are `sync` and `run`:
 
@@ -20,7 +20,7 @@ ssh ansible-controller run provision --check --limit caddy
 ssh ansible-controller run migrate --check --limit mosquitto,mosquitto-old
 ```
 
-`provision` and `migrate` are yours only; the `207` key can't run them.
+`provision`, `migrate`, `hold`, `release` and `nightly` (except `--dry-run`) are yours only; the `207` key can't run them.
 
 ## Verify
 
@@ -82,14 +82,6 @@ PATH="$PWD/.venv/bin:$PATH" scripts/new-controller-keys.sh
 ```
 
 The script asks for the vault password. Choose a long random one and keep it in your password manager. Put the printed `controller_ssh_key` in `inventory/group_vars/all/main.yml` and the printed line in `known_hosts`.
-
-### Proxmox host: remove the community-scripts updater
-
-```sh
-crontab -l
-crontab -l | grep -v 'update-lxcs-cron.sh' | crontab -
-crontab -l
-```
 
 ### Proxmox host: user, token and pool for Ansible
 
@@ -240,46 +232,6 @@ pct reboot 113
 ssh ansible-controller run check --limit ansible-controller
 ```
 
-### Proxmox host: controller access to the old guests
-
-Copying data needs the controller's key on every old guest, plus `rsync` and `python3`. Every `pct exec` and `qm guest exec` reads `/dev/null`; otherwise the first one swallows the rest of a paste. The host keys are read through `pct` and the guest agent, so they are trusted without a first-use scan. Add the printed lines to `known_hosts`. `key` is `controller_ssh_key` from `inventory/group_vars/all/main.yml`; change it here after rotating that key.
-
-```sh
-key='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILN3J6Yob8INNpKUODlZxy5FSonPRb2FAa3rAChBC/zr ansible-controller'
-for id in 100 101 102 103 104 105 106 107 108 109 110 111 112; do
-  pct exec $id -- bash -c "
-    apt update && apt install -y openssh-server rsync python3
-    install -d -m 700 /root/.ssh
-    grep -qxF '$key' /root/.ssh/authorized_keys 2>/dev/null || echo '$key' >> /root/.ssh/authorized_keys
-    chmod 600 /root/.ssh/authorized_keys
-    systemctl enable --now ssh" </dev/null
-done
-for id in 100 101 110 111; do
-  pct exec $id -- ufw allow from 192.168.1.103 to any port 22 proto tcp comment 'ansible controller' </dev/null
-done
-for id in 201 202 203 204 205 206 208; do
-  qm guest exec $id --timeout 120 -- bash -c "
-    grep -qxF '$key' /home/emil/.ssh/authorized_keys || echo '$key' >> /home/emil/.ssh/authorized_keys
-    command -v rsync >/dev/null || apt install -y rsync" </dev/null
-done
-for p in 100:adguard-old 101:wireguard-old 102:bentopdf-old 103:mosquitto-old 104:zigbee2mqtt-old \
-  105:esphome-old 106:homepage-old 107:smokeping-old 108:myspeed-old 109:changedetection-old \
-  110:caddy-old 111:jellyfin-old 112:uptime-kuma-old; do
-  printf '%s %s\n' "${p#*:}" "$(pct exec ${p%%:*} -- cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub </dev/null)"
-done
-for p in 201:immich-old 202:miniflux-linkding-old 203:audiobookshelf-old 204:grafana-loki-old \
-  205:paperless-old 206:nextcloud-old 208:meshmonitor-old; do
-  printf '%s %s\n' "${p#*:}" "$(qm guest exec ${p%%:*} -- cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub </dev/null |
-    python3 -c 'import json, sys; print(json.load(sys.stdin)["out-data"].strip())')"
-done
-```
-
-After committing `known_hosts` and running `ssh ansible-controller sync`, check every old guest from `113` as root:
-
-```sh
-runuser -u ansible -- bash -c 'cd /opt/ansible && ANSIBLE_CONFIG=/opt/ansible/ansible.cfg ANSIBLE_COLLECTIONS_PATH=~/collections ANSIBLE_VAULT_PASSWORD_FILE=~/.vault-pass ~/venv/bin/ansible legacy -m ansible.builtin.ping'
-```
-
 ### `113`: check the token
 
 The secret is read without echo and passed to `curl` on stdin, so it stays out of history and the process list. Paste the `read` line on its own, type the secret and press Enter, then paste the rest. Pasted together, `read` swallows the next line instead of waiting. If you don't have the secret to hand, `.venv/bin/ansible-vault view inventory/group_vars/all/vault.yml` on the laptop shows it.
@@ -311,7 +263,7 @@ Two pins follow upstream instead of their own release stream:
 1. Zigbee2MQTT's pnpm has no pin: the role installs the version the tag's `package.json` names in `packageManager`.
 1. Gotenberg is held below 9 (`allowedVersions`) to match the Gotenberg major in Paperless's upstream Compose file. Raise the limit when Paperless moves.
 
-A merge changes `main` only. Nothing deploys until `sync` and `apply`.
+A merge deploys at 04:30 (see "Nightly deploy"). For one that needs a procedure first (a Postgres major, an Immich release that changes Compose or the database), `run hold <host>` before merging.
 
 ### GitHub: CI and the ruleset on `main`
 
@@ -360,6 +312,7 @@ Repo setting: auto-merge allowed, head branches deleted after merge.
 
 Before each rebuild, the report lists the data to copy, how, and how it will be tested. Below, `<host>` is the new guest, `<old>` and `<new>` are the old and new IDs.
 
+1. Keep the nightly deploy off it: `ssh ansible-controller run hold <host> rebuild`.
 1. Point the inventory at both guests. Add the old guest to `legacy_lxc` or `legacy_vm` in `inventory/hosts.yml` as `<host>-old`, with `ansible_host` (its production IP) and `migrate_roles` (the roles with a `migrate_export.yml`). In `inventory/host_vars/<host>/main.yml` set `legacy_host: <host>-old`, the new `vmid`, `net_production: false` and `ansible_host` to the temporary address. Copy the `<host>` line in `known_hosts` to a `<host>-old` line. Afterwards, remove all of it again.
 1. Provision on the temporary MAC and DHCP address, as in "Add a service". Zigbee2MQTT and anything on NFS stay stopped.
 1. Copy the data, if the service has any. The old guest lists its roles under `migrate_roles` in `inventory/hosts.yml`. The export stops the app on the old guest, so this is the start of the outage:
@@ -397,7 +350,7 @@ Before each rebuild, the report lists the data to copy, how, and how it will be 
 
    Then revert the `host_vars` commit.
 
-A rebuild is done when it's accepted and has a backup (the 23:30 PBS job picks up new IDs). The old guest stays stopped until you delete it.
+A rebuild is done when it's accepted and has a backup (the 23:30 PBS job picks up new IDs). Then `ssh ansible-controller run release <host>`. The old guest stays stopped until you delete it.
 
 ### A lost guest
 
@@ -412,7 +365,7 @@ ssh ansible-controller run apply --limit <host>
 
 ## Apply a Renovate PR
 
-Renovate merges most PRs itself (see "GitHub: Renovate"). Deploy them like this; for a PR it left to you, read the PR and the upstream release notes first, then merge it.
+Renovate merges most PRs itself (see "GitHub: Renovate"), and the nightly deploy rolls them out at 04:30. For a PR it left to you, read the PR and the upstream release notes first, then merge it. To deploy one sooner, or one that needs a procedure (hold the guest first, do the procedure, then `release`):
 
 ```sh
 ssh ansible-controller sync
@@ -472,14 +425,13 @@ This replaces the controller's client key. Its host key stays, so `known_hosts` 
    ssh ansible-controller run apply --limit 'managed:!ansible-controller'
    ```
 
-1. If old guests are still running, add the new key to them with the "controller access to the old guests" block in [Bootstrap](#bootstrap), with `key=` set to the new key.
 1. Swap the controller's private key. Its own `root` login gets both keys first:
 
    ```sh
    ssh ansible-controller run apply --limit ansible-controller
    ```
 
-1. Set `controller_ssh_key_previous` back to `""`, commit, push, then `sync` and `run apply`. It now connects with the new key and removes the old one. Remove the old key from any old guests by hand.
+1. Set `controller_ssh_key_previous` back to `""`, commit, push, then `sync` and `run apply`. It now connects with the new key and removes the old one.
 
 ### The `207` key
 
@@ -764,13 +716,16 @@ The backups are still on Holocron. Rebuild in this order:
 1. The token's `VM.Allocate` on the pool can delete pool guests. No task uses `state: absent`.
 1. The firewalls are inside the guests (UFW, and DOCKER-USER for published Docker ports), so root on a guest can turn its own off. Jellyfin, Mosquitto, AdGuard's DNS, Caddy, WireGuard's UDP port and Talk's TURN port stay open to the whole flat LAN, for the clients that use them directly.
 1. unattended-upgrades takes every origin, so third-party apt repos are not pinned. Lists refresh at 00:30, installs run at 01:00 and guests reboot at 02:00 when needed.
-1. The old community-scripts LXCs get no patches between removing the host cron and their rebuild.
 1. Until they are removed, the temporary laptop keys have no passphrase. Whoever copies it gets root on every guest, `run` on the controller (including `provision` and `migrate`), push to this repo and commits that show as verified.
-1. Nextcloud AIO updates itself daily, as upstream recommends.
+1. Nextcloud AIO updates itself daily at 05:00 on the beta channel, as upstream recommends, outside Renovate's delay and review.
 1. The repo is public: IPs, MACs and public keys are visible, and the vault files can be attacked offline. The vault password must be long and random.
 1. Python packages are pinned by version, not hash. Galaxy collections are not signature-checked.
 1. Caddy's Go and xcaddy downloads and the AdGuard Home download are checked against the checksums upstream publishes, fetched at apply time over HTTPS, not pinned in the repo. A compromised upstream release passes, and an outage blocks that apply.
-1. A merged Renovate PR goes live on the next `apply`, breaking changes included. Minor, patch and digest updates merge without review; `lint` checks syntax and style, not whether the new version works.
+1. A merged Renovate PR goes live at the next 04:30 deploy, breaking changes included. Minor, patch and digest updates merge without review; `lint` checks syntax and style, not whether the new version works.
+1. A nightly deploy that breaks a guest is held and alerted, not rolled back; the guest stays broken until you fix it. The report shows which commits it broke on, not why.
+1. OS updates have no automatic rollback. Last night's 23:30 backup, taken before the 01:00 updates, is the rollback; restore it by hand.
+1. If the Proxmox host is down, nothing alerts (Uptime Kuma runs on it). You notice the outage itself.
+1. Uptime Kuma (`124`) is the one guest allowed past the LAN's DNS block, to `9.9.9.9`, so its alerts still go out when AdGuard is down.
 1. Third-party apt repos (Docker, Jellyfin, NodeSource) can ship a major through unattended-upgrades, outside Renovate.
 1. Backups are on Holocron, in the same house, with no off-site copy. PBS doesn't encrypt them; Holocron's disk encryption covers stolen or discarded disks, not access to the running Holocron or the share.
 1. PBS doesn't hold the NFS-backed app data (Immich library, Nextcloud data, books) or Jellyfin's media; backing those up is Holocron's job.
