@@ -142,3 +142,17 @@
     enabled: true
     daemon_reload: true
   when: not ansible_check_mode or uptime_kuma_unit.stat.exists
+
+# dhclient adds it to resolv.conf on every lease; the second task covers the current lease.
+- name: Add the fallback resolver to dhclient
+  ansible.builtin.lineinfile:
+    path: /etc/dhcp/dhclient.conf
+    regexp: "^append domain-name-servers "
+    line: "append domain-name-servers {{ uptime_kuma_fallback_dns }};"
+    state: "{{ 'present' if uptime_kuma_fallback_dns else 'absent' }}"
+
+- name: Add the fallback resolver to the current resolv.conf
+  ansible.builtin.lineinfile:
+    path: /etc/resolv.conf
+    line: "nameserver {{ uptime_kuma_fallback_dns }}"
+  when: uptime_kuma_fallback_dns | length > 0
