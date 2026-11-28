@@ -1,6 +1,6 @@
 # controller
 
-The Ansible controller, LXC `113` at `192.168.1.103`. The role installs the `ansible` user, its SSH key, the controller's host key (both restored from the vault, so a rebuilt `113` keeps its identity), and the `ansible-sync`, `ansible-run` and `agent-shell` commands.
+The Ansible controller, LXC `113` at `192.168.1.103`. The role installs the `ansible` user, its SSH key, the controller's host key (both restored from the vault, so a rebuilt `113` keeps its identity), and the `ansible-sync`, `ansible-run`, `agent-shell` and `ansible-nightly` commands, and the nightly deploy's timers (project README "Nightly deploy").
 
 What Ansible can't do here is in the bootstrap section of the [project README](../../README.md#bootstrap): creating the LXC, the UniFi reservation, the Proxmox token, the vault password and the key on `207`.
 
@@ -9,7 +9,7 @@ What Ansible can't do here is in the bootstrap section of the [project README](.
 | Key                      | Login on `113` | Allowed                                                                          |
 | ------------------------ | -------------- | -------------------------------------------------------------------------------- |
 | yours                    | `root`         | anything                                                                         |
-| yours                    | `ansible`      | `sync`, `run check`, `run apply`, `run provision`                                |
+| yours                    | `ansible`      | `sync`, `run check`, `run apply`, `run provision`, `run nightly`, `run hold`, `run release` |
 | `hermes-207-ansible`     | `ansible`      | `sync`, `run check`, `run apply`, from `.225` only, when `hermes_ssh_key` is set |
 | the controller's own key | `root`         | anything (the controller manages itself)                                         |
 

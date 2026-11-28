@@ -5,3 +5,18 @@ controller_verify_push_token: "{{ vault_kuma_verify_push_token | default('') }}"
 controller_verify_push_url: "http://{{ hostvars['uptime-kuma'].ansible_host }}:3001/api/push/{{ controller_verify_push_token }}"
 # After the 02:00 reboots, the 05:00 updates and the morning unattended-upgrades run.
 controller_verify_time: "07:30"
+
+# Nightly app deploy (scripts/nightly). The settings file is always written, so
+# `run nightly --dry-run` works; the timers run only once both Kuma push tokens are set.
+controller_kuma_push_base: "http://{{ hostvars['uptime-kuma'].ansible_host }}:3001/api/push/"
+controller_nightly_result_push_token: "{{ vault_kuma_nightly_result_push_token | default('') }}"
+controller_nightly_ran_push_token: "{{ vault_kuma_nightly_ran_push_token | default('') }}"
+controller_nightly_enabled: "{{ controller_nightly_result_push_token != '' and controller_nightly_ran_push_token != '' }}"
+controller_nightly_time: "04:30"
+controller_nightly_deadline: "06:00"
+controller_nightly_ran_time: "06:30"
+controller_nightly_repo: emillassen/ansible-homelab
+controller_nightly_backup_storage: pbs
+controller_nightly_nfs_host: 192.168.1.30
+# Deployed last, in this order.
+controller_nightly_last: [wireguard, caddy, adguard]

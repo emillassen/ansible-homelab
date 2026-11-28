@@ -1,0 +1,9 @@
+[Unit]
+Description=Push whether tonight's deploy finished
+
+[Timer]
+OnCalendar=*-*-* {{ controller_nightly_ran_time }}
+Persistent=false
+
+[Install]
+WantedBy=timers.target

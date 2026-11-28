@@ -2,3 +2,4 @@
 .vault-pass*
 *.retry
 collections/
+__pycache__/

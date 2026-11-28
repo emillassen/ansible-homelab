@@ -1,0 +1,14 @@
+{{ {
+  "proxmox_host": proxmox_api_host,
+  "proxmox_token": proxmox_api_user ~ "!" ~ proxmox_api_token_id,
+  "proxmox_secret": proxmox_api_token_secret,
+  "result_url": controller_kuma_push_base ~ controller_nightly_result_push_token if controller_nightly_result_push_token else "",
+  "ran_url": controller_kuma_push_base ~ controller_nightly_ran_push_token if controller_nightly_ran_push_token else "",
+  "dns_server": hostvars["adguard"].ansible_host,
+  "nfs_host": controller_nightly_nfs_host,
+  "repo": controller_nightly_repo,
+  "backup_storage": controller_nightly_backup_storage,
+  "last": controller_nightly_last,
+  "start": controller_nightly_time,
+  "deadline": controller_nightly_deadline,
+} | to_nice_json }}

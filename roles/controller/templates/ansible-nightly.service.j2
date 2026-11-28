@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly app deploy from main
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ansible
+ExecStart=/usr/local/sbin/ansible-nightly run
+# The deadline stops new guests at {{ controller_nightly_deadline }}; this only catches a hang.
+TimeoutStartSec=3h

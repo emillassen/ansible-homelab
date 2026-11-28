@@ -1,0 +1,9 @@
+[Unit]
+Description=Push whether tonight's deploy finished
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ansible
+ExecStart=/usr/local/sbin/ansible-nightly ran-check

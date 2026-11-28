@@ -44,6 +44,23 @@ Run it after any `apply`, rebuild or Renovate merge, and whenever something seem
 
    Without the token, the controller role leaves the timer out.
 
+## Nightly deploy
+
+`ansible-nightly.timer` on `113` deploys `main` at 04:30, one guest at a time (AdGuard, Caddy and WireGuard last), and starts no new guest after 06:00. It skips the night if CI on that commit isn't green, `sync` fails, the Proxmox API, storage, DNS or NFS is down, or tonight's 23:30 backup didn't finish by 00:30. A guest without a good backup tonight, or still running unattended-upgrades, waits for the next night.
+
+Per guest: `verify` first (a guest already failing isn't touched), then `apply -e nightly=true`, then `verify` again, which waits up to `verify_wait` (default 300 s) for the app to come up. A guest whose apply would reboot it, or that fails, is **held**: the job skips it until you fix the cause and release it. Nothing is rolled back.
+
+```sh
+ssh ansible-controller run held                      # what is held and why
+ssh ansible-controller run hold immich postgres 18 upgrade by hand   # before merging such a PR
+ssh ansible-controller run apply --limit immich      # after fixing the cause
+ssh ansible-controller run release immich            # the next night deploys main to it
+ssh ansible-controller run nightly --dry-run         # preflight and the plan, changes nothing
+ssh ansible-controller run nightly --now             # a real run outside the window (90 min)
+```
+
+Reports are in `/home/ansible/nightly/runs/<date>.md` on `113`, logs in `nightly/logs/`. Two Uptime Kuma push monitors alert in Discord: `Nightly result` (down with a summary when anything wasn't deployed) and `Nightly ran` (06:30; down if no run finished). To set them up, make both as for `Ansible verify` above (heartbeat interval `90000`), add `vault_kuma_nightly_result_push_token` and `vault_kuma_nightly_ran_push_token` to the vault, then `run apply --limit ansible-controller`. Without both, the timers stay off.
+
 ## Bootstrap
 
 Run these in order the first time. To rebuild `113` later, start at "Create `113`".
@@ -89,6 +106,9 @@ pveum acl modify /vms/903 --users ansible@pve --roles AnsibleClone
 pveum acl modify /storage/local-zfs --users ansible@pve --roles AnsibleDisk
 pveum acl modify /storage/local --users ansible@pve --roles AnsibleCTTemplate
 pveum acl modify /sdn/zones/localnetwork --users ansible@pve --roles AnsibleBridge
+# The nightly deploy reads the 23:30 backup task, which root owns.
+pveum role add AnsibleAudit --privs "Sys.Audit"
+pveum acl modify "/nodes/$(hostname)" --users ansible@pve --roles AnsibleAudit
 pveum user token add ansible@pve provision --privsep 0 --comment "controller 113"
 pveum acl list | grep ansible
 ```

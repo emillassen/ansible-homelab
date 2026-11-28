@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly app deploy from main
+
+[Timer]
+OnCalendar=*-*-* {{ controller_nightly_time }}
+# A missed night is skipped, not run in the daytime.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
