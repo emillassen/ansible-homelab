@@ -585,6 +585,8 @@ In the web UI (`https://192.168.1.122:8007`, `root@pam`):
    ssh root@192.168.1.122 'apt-get install --reinstall -y proxmox-widget-toolkit && grep -c NoMoreNagging /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js && systemctl restart proxmox-backup-proxy'
    ```
 
+   The second line must print `2`. The hook only runs on the next apt install, so if that line didn't run, the popup comes back; run it again.
+
    If the host has no hook yet (a fresh Proxmox install), create it as in "Remove the subscription popup" in `docs/proxmox/proxmox.md` of the `homelab` repo. Reload the UI with Ctrl+Shift+R.
 
 ### 6. PBS: the datastore
