@@ -1,0 +1,702 @@
+#!/home/ansible/venv/bin/python3 -u
+"""ansible-nightly: the 04:30 app deploy from main (cicd-plan-v4, phase 2: no rollback).
+
+  ansible-nightly run [--now]          deploy (ansible-nightly.timer); --now skips the
+                                       04:30-06:00 window check and allows 90 minutes
+  ansible-nightly dry-run              preflight and the plan for each guest; changes nothing
+  ansible-nightly ran-check            06:30: push whether today's run finished
+  ansible-nightly hold GUEST REASON... skip GUEST until released
+  ansible-nightly release GUEST
+  ansible-nightly held
+
+Runs as ansible on 113 and holds run.lock throughout. Settings and secrets come from
+~/.nightly.json (controller role). Everything it writes is under ~/nightly/.
+"""
+import datetime as dt
+import fcntl
+import json
+import os
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+from urllib.parse import quote
+
+import requests
+import urllib3
+
+HOME = Path("/home/ansible")
+SRC = HOME / "src"
+VENV = HOME / "venv/bin"
+N = HOME / "nightly"
+STATE, HELD, RUNS, TREES, LOGS = N / "state.json", N / "held", N / "runs", N / "trees", N / "logs"
+NEXTCLOUD = "nextcloud"
+LOCK_FLAG = "/run/nightly-nextcloud-lock.held"
+CAP = 200_000  # bytes kept per saved log
+
+urllib3.disable_warnings()
+
+
+def now():
+    return dt.datetime.now().astimezone()
+
+
+def stamp(t=None):
+    return (t or now()).isoformat(timespec="seconds")
+
+
+def read_json(path, default):
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        return default
+
+
+def write_json(path, data):
+    """Atomic: a crash leaves the old file or the new one, never half of either."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    d = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(d)
+    finally:
+        os.close(d)
+
+
+def save(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text[-CAP:])
+
+
+def conf():
+    return json.loads((HOME / ".nightly.json").read_text())
+
+
+# --- running Ansible --------------------------------------------------------------
+
+
+LOCK_FD = []  # run.lock, passed to every child so the lock lasts as long as they do
+_LOCKS = []  # the open file; if it were garbage collected, the lock would go with it
+
+
+def sh(cmd, cwd=None, timeout=300, env=None):
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, start_new_session=True, pass_fds=tuple(LOCK_FD))
+    try:
+        out, err = p.communicate(timeout=timeout)
+        return p.returncode, out, err
+    except subprocess.TimeoutExpired:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(p.pid, sig)
+                out, err = p.communicate(timeout=30)
+                break
+            except ProcessLookupError:
+                out, err = "", ""
+                break
+            except subprocess.TimeoutExpired:
+                out, err = "", ""
+        return 124, out or "", (err or "") + f"\ntimed out after {timeout} s"
+
+
+def ansible_env(tree, json_out=False):
+    e = dict(os.environ, LANG="C.UTF-8", LC_ALL="C.UTF-8", ANSIBLE_NOCOLOR="1",
+             ANSIBLE_CONFIG=str(tree / "ansible.cfg"),
+             ANSIBLE_VAULT_PASSWORD_FILE=str(HOME / ".vault-pass"),
+             ANSIBLE_COLLECTIONS_PATH=str(HOME / "collections"),
+             ANSIBLE_LOG_PATH=str(HOME / "log/ansible.log"))
+    if json_out:
+        e.update(ANSIBLE_LOAD_CALLBACK_PLUGINS="1", ANSIBLE_STDOUT_CALLBACK="ansible.builtin.json")
+    return e
+
+
+def playbook(tree, args, timeout):
+    rc, out, err = sh([str(VENV / "ansible-playbook"), *args], tree, timeout, ansible_env(tree))
+    return rc, out + err
+
+
+def on_guest(tree, guest, cmd, timeout=300):
+    """A shell command on one guest. Returns (rc, stdout); rc 255 if unreachable."""
+    rc, out, err = sh([str(VENV / "ansible"), guest, "-m", "ansible.builtin.shell", "-a", cmd],
+                      tree, timeout, ansible_env(tree, json_out=True))
+    try:
+        r = json.loads(out)["plays"][0]["tasks"][0]["hosts"][guest]
+    except (ValueError, KeyError, IndexError):
+        return 255, (out + err)[-2000:]
+    if r.get("unreachable"):
+        return 255, r.get("msg", "unreachable")
+    return r.get("rc", 1), r.get("stdout", "") + r.get("stderr", "")
+
+
+def inventory(tree):
+    rc, out, err = sh([str(VENV / "ansible-inventory"), "--list"], tree, 120, ansible_env(tree))
+    if rc != 0:
+        raise RuntimeError("ansible-inventory failed: " + err[-500:])
+    return json.loads(out)
+
+
+def problems(out, limit=5):
+    """The few lines of a play's output that say what failed."""
+    keep = [ln.strip() for ln in out.splitlines()
+            if re.search(r"fatal:|FAILED!|UNREACHABLE!|msg:|needs a manual apply|  - ", ln)]
+    return " | ".join(keep[:limit])[:500] or out.strip()[-300:]
+
+
+# --- git and trees ----------------------------------------------------------------
+
+
+def git(*args, timeout=120):
+    rc, out, err = sh(["git", "-C", str(SRC), *args], timeout=timeout)
+    if rc != 0:
+        raise RuntimeError(f"git {' '.join(args)}: {err.strip()[-300:]}")
+    return out.strip()
+
+
+def tree(sha):
+    """The repo at sha, unpacked once under trees/ and reused."""
+    d = TREES / sha
+    if (d / ".complete").exists():
+        return d
+    tmp = TREES / (sha + ".tmp")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    archive = subprocess.Popen(["git", "-C", str(SRC), "archive", sha], stdout=subprocess.PIPE)  # noqa: S603
+    untar = subprocess.run(["tar", "-x", "-C", str(tmp)], stdin=archive.stdout)
+    if archive.wait() != 0 or untar.returncode != 0:
+        raise RuntimeError(f"could not unpack {sha}")
+    (tmp / ".complete").touch()
+    shutil.rmtree(d, ignore_errors=True)
+    os.replace(tmp, d)
+    return d
+
+
+# --- shared checks ----------------------------------------------------------------
+
+
+class PVE:
+    def __init__(self, c):
+        self.base = f"https://{c['proxmox_host']}:8006/api2/json"
+        self.auth = {"Authorization": f"PVEAPIToken={c['proxmox_token']}={c['proxmox_secret']}"}
+        self.node = None
+
+    def get(self, path, **params):
+        r = requests.get(self.base + path, headers=self.auth, params=params, verify=False, timeout=30)
+        r.raise_for_status()
+        return r.json()["data"]
+
+    def node_name(self):
+        if not self.node:
+            self.node = self.get("/nodes")[0]["node"]
+        return self.node
+
+
+def dns_answers(server, name, timeout=5):
+    q = os.urandom(2) + b"\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+    q += b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\x00\x00\x01\x00\x01"
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.settimeout(timeout)
+        s.sendto(q, (server, 53))
+        r = s.recv(512)
+    return r[:2] == q[:2] and r[3] & 0x0F == 0 and int.from_bytes(r[6:8], "big") > 0
+
+
+def shared_problems(c, pve):
+    """Proxmox API, local storage, DNS and NFS. An empty list means all are fine."""
+    out = []
+    try:
+        pve.get("/version")
+        for s in pve.get(f"/nodes/{pve.node_name()}/storage"):
+            content = set(s.get("content", "").split(","))
+            if s.get("active") and not s.get("shared") and content & {"images", "rootdir"} and s.get("total"):
+                free = 1 - s["used"] / s["total"]
+                if free < 0.2:
+                    out.append(f"storage {s['storage']} has {free:.0%} free")
+    except (requests.RequestException, KeyError, IndexError) as e:
+        out.append(f"Proxmox API: {e}")
+    try:
+        if not dns_answers(c["dns_server"], "github.com"):
+            out.append(f"DNS {c['dns_server']} gave no answer for github.com")
+    except OSError as e:
+        out.append(f"DNS {c['dns_server']}: {e}")
+    try:
+        socket.create_connection((c["nfs_host"], 2049), 5).close()
+    except OSError as e:
+        out.append(f"NFS {c['nfs_host']}: {e}")
+    return out
+
+
+def backup_window(t):
+    """Tonight's backup must start after 23:00 and end before 00:30 (the OS updates)."""
+    end = t.replace(hour=0, minute=30, second=0, microsecond=0)
+    if t < end:
+        end -= dt.timedelta(days=1)
+    return end - dt.timedelta(minutes=90), end
+
+
+def parse_backup_log(lines):
+    ok = {int(v) for v in re.findall(r"Finished Backup of VM (\d+)", "\n".join(lines))}
+    bad = {int(v) for v in re.findall(r"Backup of VM (\d+) failed", "\n".join(lines))}
+    return ok - bad
+
+
+def backups(c, pve, t):
+    """(vmids with a good backup tonight, problem or None)."""
+    start, end = backup_window(t)
+    node = pve.node_name()
+    tasks = pve.get(f"/nodes/{node}/tasks", typefilter="vzdump", since=int(start.timestamp()),
+                    source="all", limit=200)
+    for task in sorted(tasks, key=lambda x: x["starttime"], reverse=True):
+        if not start.timestamp() <= task["starttime"] < end.timestamp():
+            continue
+        lines = [ln["t"] for ln in pve.get(f"/nodes/{node}/tasks/{quote(task['upid'], safe='')}/log",
+                                           limit=100000)]
+        storage = re.compile(rf"--storage {re.escape(c['backup_storage'])}(\s|$)")
+        if not any(storage.search(ln) for ln in lines[:5]):
+            continue
+        if not task.get("endtime"):
+            return set(), "tonight's backup is still running"
+        if task["endtime"] >= end.timestamp():
+            ended = dt.datetime.fromtimestamp(task["endtime"]).strftime("%H:%M")
+            return set(), f"tonight's backup ended at {ended}, after 00:30"
+        # "job errors" means some guests failed; the log says which. Anything else is the job.
+        if task.get("status") not in ("OK", "job errors"):
+            return set(), f"tonight's backup ended with: {task.get('status')}"
+        return parse_backup_log(lines), None
+    return set(), f"no backup to {c['backup_storage']} started between 23:00 and 00:30"
+
+
+def proxmox_names(pve):
+    return {g["vmid"]: g.get("name") for g in pve.get("/cluster/resources", type="vm")}
+
+
+def ci_passed(c, sha):
+    """The lint check from GitHub Actions on exactly this commit, completed and green."""
+    try:
+        r = requests.get(f"https://api.github.com/repos/{c['repo']}/commits/{sha}/check-runs",
+                         params={"check_name": "lint", "filter": "latest"}, timeout=30,
+                         headers={"Accept": "application/vnd.github+json"})
+        r.raise_for_status()
+        runs = [x for x in r.json()["check_runs"] if (x.get("app") or {}).get("slug") == "github-actions"]
+    except (requests.RequestException, ValueError, KeyError) as e:
+        return f"couldn't read CI for {sha[:7]}: {e}"
+    if not runs:
+        return f"no lint check on {sha[:7]}"
+    bad = [f"{x['status']}/{x['conclusion']}" for x in runs
+           if x["status"] != "completed" or x["conclusion"] != "success"]
+    return f"lint on {sha[:7]} is {', '.join(bad)}" if bad else None
+
+
+# --- holds and state --------------------------------------------------------------
+
+
+def held():
+    out = {}
+    for p in sorted(HELD.glob("[!.]*")):
+        try:
+            out[p.name] = read_json(p, {})
+        except ValueError:
+            out[p.name] = {"reason": "unreadable hold file"}
+    return out
+
+
+def hold(guest, reason, sha=""):
+    HELD.mkdir(parents=True, exist_ok=True)
+    write_json(HELD / guest, {"reason": reason, "since": stamp(), "sha": sha})
+
+
+def held_for(info):
+    try:
+        days = (now() - dt.datetime.fromisoformat(info["since"])).days
+        return f"{days} d" if days else "today"
+    except (KeyError, ValueError):
+        return "?"
+
+
+def order(hosts, c, state):
+    """Least critical first, the network guests last, and a guest deferred two nights
+    running goes first so the last ones can't be starved."""
+    last = [g for g in c["last"] if g in hosts]
+    base = [g for g in hosts if g not in last] + last
+    starved = [g for g in base if state["guests"].get(g, {}).get("deferred", 0) >= 2]
+    return starved + [g for g in base if g not in starved]
+
+
+def docker_state(t, guest):
+    rc, out = on_guest(t, guest, "docker inspect $(docker ps -aq) 2>/dev/null || echo []")
+    try:
+        return {x["Name"].lstrip("/"): f"{x['Config']['Image']} {x['Image'][7:19]} {x['State']['Status']}"
+                for x in json.loads(out or "[]")}
+    except (ValueError, KeyError, TypeError):
+        return {}
+
+
+def evidence(t, guest, since, is_docker, logdir):
+    _, journal = on_guest(t, guest, f"journalctl -p warning --since @{int(since)} -n 300 --no-pager")
+    text = "== journalctl -p warning\n" + journal
+    if is_docker:
+        _, ps = on_guest(t, guest, "docker ps -a")
+        _, logs = on_guest(t, guest, "for f in health=unhealthy status=exited status=restarting; do "
+                                     "for c in $(docker ps -aq --filter $f); do echo \"== docker logs $c ($f)\"; "
+                                     "docker logs --tail 100 $c 2>&1; done; done")
+        text += "\n== docker ps -a\n" + ps + "\n" + logs
+    save(logdir / f"{guest}-evidence.log", text)
+
+
+# --- the night --------------------------------------------------------------------
+
+
+def lock(wait_s):
+    fd = open(HOME / "run.lock", "w")  # noqa: SIM115 - held until the process exits
+    end = time.time() + wait_s
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            LOCK_FD.append(fd.fileno())
+            _LOCKS.append(fd)
+            return fd
+        except BlockingIOError:
+            if time.time() >= end:
+                return None
+            time.sleep(30)
+
+
+def push(url, status, msg):
+    if not url:
+        return
+    try:
+        requests.get(url, params={"status": status, "msg": msg[:250], "ping": ""}, timeout=30).raise_for_status()
+    except requests.RequestException as e:
+        print(f"push to Uptime Kuma failed: {e}", file=sys.stderr)
+
+
+def summary(guests):
+    by = {}
+    for g in guests:
+        if g["result"] != "deployed":
+            by.setdefault(g["result"], []).append(g["guest"] + (f" ({g['note'][:60]})" if g.get("note") else ""))
+    return "; ".join(f"{k}: {', '.join(v)}" for k, v in by.items()) or "all deployed"
+
+
+def report(rec_path, rec):
+    a = rec["attempts"][-1]
+    lines = [f"# Nightly {a['id']}", "", f"Target: `{a.get('sha', '?')[:7]}` {a.get('subject', '')}",
+             f"Started {a['started']}, finished {a.get('finished') or 'not yet'}.", ""]
+    if a.get("skipped"):
+        lines += [f"**Night skipped:** {a['skipped']}", ""]
+    if a.get("guests"):
+        lines += ["| Guest | Result | Note |", "| --- | --- | --- |"]
+        lines += [f"| {g['guest']} | {g['result']} | {g.get('note', '').replace('|', '/')} |" for g in a["guests"]]
+        lines.append("")
+        for g in a["guests"]:
+            if g.get("commits") or g.get("changed_containers"):
+                lines.append(f"## {g['guest']}")
+                lines += [f"- {c}" for c in g.get("commits", [])]
+                lines += [f"- container {k}: {v}" for k, v in g.get("changed_containers", {}).items()]
+                lines.append("")
+    h = held()
+    if h:
+        lines += ["## Held", ""] + [f"- {k}: {v.get('reason', '')} ({held_for(v)})" for k, v in h.items()] + [""]
+    lines.append(f"Logs: `{LOGS / a['id']}`")
+    rec_path.with_suffix(".md").write_text("\n".join(lines) + "\n")
+
+
+def prune(keep_shas):
+    trees = sorted((p for p in TREES.glob("*") if p.is_dir() and not p.name.endswith(".tmp")),
+                   key=lambda p: p.stat().st_mtime, reverse=True)
+    for p in trees[3:]:
+        if p.name not in keep_shas:
+            shutil.rmtree(p, ignore_errors=True)
+    for d, days in ((RUNS, 60), (LOGS, 30)):
+        for p in d.glob("*"):
+            if time.time() - p.stat().st_mtime > days * 86400:
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
+
+
+def deploy(t, base_tree, guest, sha, inv, state, logdir, good_backups, names):
+    """One guest. Returns its record; the caller handles holds and the deferred counter."""
+    rec = {"guest": guest}
+    hv = inv["_meta"]["hostvars"].get(guest, {})
+    is_docker = guest in inv.get("docker", {}).get("hosts", [])
+    if names.get(hv.get("vmid")) != guest:
+        return {**rec, "result": "skipped", "note": f"VMID {hv.get('vmid')} is {names.get(hv.get('vmid'))!r} in Proxmox"}
+    if hv.get("vmid") not in good_backups:
+        return {**rec, "result": "skipped", "note": "no good backup tonight"}
+
+    rc, out = on_guest(t, guest, "systemctl is-active apt-daily.service apt-daily-upgrade.service; "
+                                 "pgrep -x dpkg >/dev/null && echo dpkg; true")
+    if rc != 0:
+        return {**rec, "result": "deferred", "note": "couldn't check for unattended-upgrades: " + out[-120:]}
+    if re.search(r"^(active|activating|reloading|deactivating|dpkg)$", out, re.M):
+        return {**rec, "result": "deferred", "note": "unattended-upgrades still running"}
+
+    locked = False
+    try:
+        if guest == NEXTCLOUD:
+            on_guest(t, guest, f"systemctl stop nightly-nextcloud-lock 2>/dev/null; rm -f {LOCK_FLAG}; "
+                               "systemctl reset-failed nightly-nextcloud-lock 2>/dev/null; "
+                               "systemd-run --unit=nightly-nextcloud-lock --collect "
+                               f"-p ExecStopPost='/bin/rm -f {LOCK_FLAG}' flock -w 600 "
+                               f"/run/lock/nextcloud-update.lock sh -c 'touch {LOCK_FLAG}; exec sleep 14400'")
+            rc, _ = on_guest(t, guest, f"for i in $(seq 120); do [ -e {LOCK_FLAG} ] && exit 0; sleep 5; done; exit 1",
+                             timeout=700)
+            if rc != 0:
+                return {**rec, "result": "deferred", "note": "AIO's own update held the lock for 10 min"}
+            locked = True
+
+        rc, out = playbook(base_tree, ["playbooks/verify.yml", "--limit", guest], 1800)
+        save(logdir / f"{guest}-baseline.log", out)
+        if rc != 0:
+            return {**rec, "result": "already failing", "note": "before the deploy: " + problems(out)}
+
+        base_sha = state["guests"].get(guest, {}).get("deployed")
+        if base_sha and base_sha != sha:
+            try:
+                rec["commits"] = git("log", "--oneline", "--no-decorate", "-30", f"{base_sha}..{sha}").splitlines()
+            except RuntimeError:
+                pass
+        before = docker_state(t, guest) if is_docker else {}
+
+        state["attempt"] = {"guest": guest, "sha": sha, "phase": "apply_started", "at": stamp()}
+        write_json(STATE, state)
+        t0 = time.time()
+        rc, out = playbook(t, ["playbooks/site.yml", "--limit", guest, "-e", "nightly=true"], 3600)
+        save(logdir / f"{guest}-apply.log", out)
+        if rc == 0:
+            rc, vout = playbook(t, ["playbooks/verify.yml", "--limit", guest, "-e", "verify_poll=true"], 3600)
+            save(logdir / f"{guest}-verify.log", vout)
+            what = "verify after the deploy"
+        else:
+            vout, what = out, ("needs a manual apply" if "needs a manual apply" in out
+                               else "unreachable" if rc == 4 else "apply failed")
+        if is_docker:
+            after = docker_state(t, guest)
+            rec["changed_containers"] = {k: f"{before.get(k, '-')} -> {v}" for k, v in after.items()
+                                         if before.get(k) != v}
+        if rc != 0:
+            evidence(t, guest, t0, is_docker, logdir)
+            rec.update(result="failed", note=f"{what}: {problems(vout)}")
+        else:
+            rec["result"] = "deployed"
+        return rec
+    finally:
+        if locked:
+            on_guest(t, guest, "systemctl stop nightly-nextcloud-lock 2>/dev/null; true")
+
+
+def night(now_flag):
+    c, start = conf(), now()
+    h0, m0 = map(int, c["start"].split(":"))
+    h1, m1 = map(int, c["deadline"].split(":"))
+    deadline = start.replace(hour=h1, minute=m1, second=0, microsecond=0)
+    if now_flag:
+        deadline = start + dt.timedelta(minutes=90)
+    elif not start.replace(hour=h0, minute=m0, second=0, microsecond=0) <= start < deadline:
+        print(f"refusing: outside {c['start']}-{c['deadline']} (use --now)", file=sys.stderr)
+        return 64
+    for d in (N, HELD, RUNS, TREES, LOGS):
+        d.mkdir(parents=True, exist_ok=True)
+    # The run record is only touched with the lock held, so two starts can't share an attempt.
+    if not lock(600):
+        msg = "night skipped: run.lock busy for 10 min"
+        push(c.get("result_url"), "down", msg)
+        print(msg, file=sys.stderr)
+        return 75
+    day = start.strftime("%Y-%m-%d")
+    rec_path = RUNS / f"{day}.json"
+    rec = read_json(rec_path, {"attempts": []})
+    a = {"id": f"{day}-{len(rec['attempts']) + 1}", "started": stamp(start), "finished": None, "guests": []}
+    rec["attempts"].append(a)
+    logdir = LOGS / a["id"]
+
+    def finish(skipped=None):
+        if skipped:
+            a["skipped"] = skipped
+        a["finished"] = stamp()
+        write_json(rec_path, rec)
+        report(rec_path, rec)
+        if skipped:
+            msg = "night skipped: " + skipped
+        else:
+            msg = summary(a["guests"])
+            if held():
+                msg += "; still held: " + ", ".join(held())
+        good = msg == "all deployed"
+        push(c.get("result_url"), "up" if good else "down", msg)
+        print(f"{a['id']}: {msg}")
+        return 0 if good else 1
+
+    write_json(rec_path, rec)
+    state = read_json(STATE, {"guests": {}})
+    state.setdefault("guests", {})
+
+    # Recovery: an apply that started and never recorded its outcome stays held, even if
+    # the guest looks healthy; half-applied config can still be running.
+    if state.get("attempt"):
+        x = state.pop("attempt")
+        hold(x["guest"], f"interrupted during the apply of {x['sha'][:7]} on {x['at']}; "
+                         f"run apply --limit {x['guest']}, then release", x["sha"])
+        if x["guest"] == NEXTCLOUD:
+            on_guest(Path("/opt/ansible"), NEXTCLOUD, "systemctl stop nightly-nextcloud-lock 2>/dev/null; true")
+        write_json(STATE, state)
+
+    pve = PVE(c)
+    try:
+        pre_sha = git("rev-parse", "HEAD")
+        git("fetch", "--quiet", "origin", "main")
+        sha = git("rev-parse", "origin/main")
+    except RuntimeError as e:
+        return finish(str(e))
+    a["sha"], a["subject"] = sha, git("log", "-1", "--format=%s", sha)
+    write_json(rec_path, rec)
+
+    bad = ci_passed(c, sha)
+    if bad:
+        return finish(bad)
+    try:
+        base_default = tree(pre_sha)  # the baseline for guests with no deploy on record
+        rc, out, err = sh(["/usr/local/sbin/ansible-sync", sha], timeout=1800,
+                          env=dict(os.environ, ANSIBLE_LOCK_HELD="1"))
+        if rc != 0:
+            return finish("sync failed: " + (err or out).strip()[-200:])
+        t = tree(sha)
+        inv = inventory(t)
+    except RuntimeError as e:
+        return finish(str(e))
+    shared = shared_problems(c, pve)
+    if shared:
+        return finish("; ".join(shared))
+    try:
+        good, why = backups(c, pve, start)
+    except (requests.RequestException, KeyError) as e:
+        good, why = set(), f"couldn't read the backup task: {e}"
+    if why:
+        return finish(why)
+
+    try:
+        names = proxmox_names(pve)
+    except (requests.RequestException, KeyError) as e:
+        return finish(f"couldn't list the guests in Proxmox: {e}")
+
+    hosts = [g for g in inv["managed"]["hosts"] if g != "ansible-controller"]
+    stopped = None
+    for guest in order(hosts, c, state):
+        g_state = state["guests"].setdefault(guest, {})
+        holds = held()  # a `run hold` made during the night counts from the next guest on
+        if guest in holds:
+            r = {"guest": guest, "result": "held", "note": holds[guest].get("reason", "")}
+        elif stopped:
+            r = {"guest": guest, "result": "deferred", "note": stopped}
+        elif now() >= deadline:
+            r = {"guest": guest, "result": "deferred", "note": "deadline reached"}
+        else:
+            print(f"{guest}: deploying {sha[:7]}")
+            base = tree(g_state["deployed"]) if g_state.get("deployed") else base_default
+            try:
+                r = deploy(t, base, guest, sha, inv, state, logdir, good, names)
+            except Exception as e:  # noqa: BLE001 - one guest's crash must not end the night
+                r = {"guest": guest, "result": "failed", "note": f"nightly crashed: {e!r}"[:300]}
+            # The outcome is saved before the attempt is cleared, so a crash in between
+            # still holds the guest on the next start.
+            if r["result"] == "deployed":
+                g_state["deployed"] = sha
+            elif r["result"] == "failed":
+                hold(guest, r["note"], sha)
+            state.pop("attempt", None)
+            write_json(STATE, state)
+            if r["result"] == "failed":
+                shared = shared_problems(c, pve)
+                if shared:
+                    stopped = "night stopped after a failure: " + "; ".join(shared)
+        g_state["deferred"] = g_state.get("deferred", 0) + 1 if r["result"] == "deferred" else 0
+        print(f"{guest}: {r['result']} {r.get('note', '')}")
+        a["guests"].append(r)
+        write_json(STATE, state)
+        write_json(rec_path, rec)
+
+    prune({sha, pre_sha} | {g.get("deployed") for g in state["guests"].values()})
+    return finish()
+
+
+def dry_run():
+    c, start = conf(), now()
+    fd = lock(0)
+    if not fd:
+        print("busy: another sync or run holds the lock", file=sys.stderr)
+        return 75
+    state = read_json(STATE, {"guests": {}})
+    if state.get("attempt"):
+        print(f"interrupted attempt on record (would be held): {state['attempt']}")
+    git("fetch", "--quiet", "origin", "main")
+    sha = git("rev-parse", "origin/main")
+    print(f"target {sha[:7]} {git('log', '-1', '--format=%s', sha)}")
+    print(f"CI: {ci_passed(c, sha) or 'lint passed'}")
+    pve = PVE(c)
+    print(f"shared: {'; '.join(shared_problems(c, pve)) or 'all fine'}")
+    try:
+        good, why = backups(c, pve, start)
+    except (requests.RequestException, KeyError) as e:
+        good, why = set(), f"couldn't read the backup task: {e}"
+    print(f"backups: {why or f'{len(good)} guests backed up'}")
+    try:
+        names = proxmox_names(pve)
+    except (requests.RequestException, KeyError) as e:
+        names = {}
+        print(f"couldn't list the guests in Proxmox: {e}")
+    inv = inventory(Path("/opt/ansible"))
+    holds = held()
+    for guest in order([g for g in inv["managed"]["hosts"] if g != "ansible-controller"], c, state):
+        vmid = inv["_meta"]["hostvars"].get(guest, {}).get("vmid")
+        plan = ("held: " + holds[guest].get("reason", "")) if guest in holds else \
+               f"skip: VMID is {names.get(vmid)!r} in Proxmox" if names.get(vmid) != guest else \
+               "deploy" if vmid in good else "skip: no good backup tonight"
+        print(f"  {guest} ({vmid}): {plan}")
+    return 0
+
+
+def ran_check():
+    c = conf()
+    rec = read_json(RUNS / f"{now():%Y-%m-%d}.json", {"attempts": []})
+    a = rec["attempts"][-1] if rec["attempts"] else None
+    if a and a.get("finished"):
+        push(c.get("ran_url"), "up", f"{a['id']} finished {a['finished'][11:16]}")
+        return 0
+    push(c.get("ran_url"), "down", "no nightly run today" if not a else f"{a['id']} didn't finish")
+    return 1
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ""
+    guest_ok = len(argv) > 2 and re.fullmatch(r"[a-z0-9-]+", argv[2]) \
+        and (Path("/opt/ansible/inventory/host_vars") / argv[2]).is_dir()
+    if cmd == "run" and argv[2:] in ([], ["--now"]):
+        return night(argv[2:] == ["--now"])
+    if cmd == "dry-run" and len(argv) == 2:
+        return dry_run()
+    if cmd == "ran-check" and len(argv) == 2:
+        return ran_check()
+    if cmd == "hold" and guest_ok and len(argv) > 3:
+        hold(argv[2], " ".join(argv[3:]))
+        print(f"{argv[2]} held")
+        return 0
+    if cmd == "release" and guest_ok and len(argv) == 3:
+        (HELD / argv[2]).unlink(missing_ok=True)
+        print(f"{argv[2]} released; the next night deploys main to it")
+        return 0
+    if cmd == "held" and len(argv) == 2:
+        for k, v in held().items():
+            print(f"{k}: {v.get('reason', '')} (since {v.get('since', '?')}, {held_for(v)})")
+        return 0
+    print(__doc__, file=sys.stderr)
+    return 64
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

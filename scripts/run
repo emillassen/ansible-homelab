@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # run check|apply|verify [--limit PATTERN]
 # run provision|migrate [--check] --limit PATTERN
+# run nightly [--dry-run|--now] | hold GUEST REASON... | release GUEST | held
 set -Eeuo pipefail
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -10,6 +11,7 @@ fi
 usage() {
   echo "usage: run check|apply|verify [--limit PATTERN]" >&2
   echo "       run provision|migrate [--check] --limit PATTERN" >&2
+  echo "       run nightly [--dry-run|--now] | hold GUEST REASON... | release GUEST | held" >&2
   exit 64
 }
 
@@ -21,6 +23,19 @@ pattern='^[A-Za-z0-9_.,:&!-]+$'
 verb="${1:-}"
 [ -n "$verb" ] || usage
 shift
+
+# The nightly deploy takes run.lock itself.
+case "$verb" in
+  nightly)
+    case "${1:-}" in
+      "") exec /usr/local/sbin/ansible-nightly run ;;
+      --now) [ $# -eq 1 ] || usage; exec /usr/local/sbin/ansible-nightly run --now ;;
+      --dry-run) [ $# -eq 1 ] || usage; exec /usr/local/sbin/ansible-nightly dry-run ;;
+      *) usage ;;
+    esac
+    ;;
+  hold | release | held) exec /usr/local/sbin/ansible-nightly "$verb" "$@" ;;
+esac
 
 limit=""
 check=""
