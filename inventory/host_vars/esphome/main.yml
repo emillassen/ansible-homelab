@@ -22,6 +22,10 @@ ufw_allow:
     proto: udp
 
 # run verify (playbooks/verify.yml)
+# The Zigbee coordinator Zigbee2MQTT uses: flashed last, after the others succeeded.
+esphome_update_last:
+  - tubeszb-cc2652-p7-poe-2023.yaml
+
 verify_units: [esphome]
 verify_http:
   - url: http://127.0.0.1:6052/

@@ -7,3 +7,7 @@ esphome_legacy_config: /root/config
 # The password is in the vault.
 esphome_dashboard_username: emil
 esphome_dashboard_password: "{{ vault_esphome_dashboard_password }}"
+# After an ESPHome upgrade, flash every device in esphome_config with it.
+esphome_update_devices: true
+# Device YAML files flashed after all others, and only if those all succeeded.
+esphome_update_last: []

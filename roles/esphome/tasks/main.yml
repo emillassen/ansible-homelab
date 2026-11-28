@@ -1,4 +1,14 @@
 ---
+# A device update still flashing would race the venv and dashboard changes below.
+- name: Wait for a running device update to finish
+  ansible.builtin.systemd_service:
+    name: esphome-update-devices.service
+  register: esphome_update_state
+  until: esphome_update_state.status.ActiveState | default('inactive') not in ['activating', 'deactivating']
+  retries: 120
+  delay: 30
+  failed_when: false
+
 - name: Install Python and the build dependencies
   ansible.builtin.apt:
     name:
@@ -47,6 +57,51 @@
     mode: "0644"
   register: esphome_requirements
 
+# After a new ESPHome, esphome-update-devices flashes every device with it.
+- name: Install the device update script
+  ansible.builtin.copy:
+    src: esphome-update-devices
+    dest: /usr/local/sbin/esphome-update-devices
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the devices that are flashed last
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (esphome_update_last). Flashed after all other devices,
+      # and only if those all succeeded. One file name per line.
+      {% for device in esphome_update_last %}
+      {{ device }}
+      {% endfor %}
+    dest: /etc/esphome-update-last
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Write the device update unit
+  ansible.builtin.template:
+    src: esphome-update-devices.service.j2
+    dest: /etc/systemd/system/esphome-update-devices.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: esphome_update_unit
+
+- name: Reload systemd for the device update unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: esphome_update_unit is changed and not ansible_check_mode
+
+- name: Read the installed ESPHome version
+  ansible.builtin.command:
+    cmd: "{{ esphome_venv }}/bin/esphome version"
+    chdir: "{{ esphome_home }}"
+  register: esphome_version_before
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 # Root owns the venv, so the dashboard can't change its own packages.
 - name: Install ESPHome into the venv
   ansible.builtin.pip:
@@ -59,6 +114,15 @@
     not ansible_check_mode or (esphome_requirements is changed
     and 'python3-venv' in ansible_facts.packages and 'python3-packaging' in ansible_facts.packages)
   notify: Restart esphome
+
+- name: Read the ESPHome version after the install
+  ansible.builtin.command:
+    cmd: "{{ esphome_venv }}/bin/esphome version"
+    chdir: "{{ esphome_home }}"
+  register: esphome_version_after
+  changed_when: false
+  failed_when: false
+  check_mode: false
 
 # The dashboard can read secrets.yaml and flash every device, so it has a login.
 - name: Create the dashboard login directory
@@ -102,3 +166,22 @@
     enabled: true
     daemon_reload: true
   when: not ansible_check_mode or esphome_unit.stat.exists
+
+# Restart the dashboard first: the update unit stops it while it flashes.
+- name: Run the pending handlers before flashing
+  ansible.builtin.meta: flush_handlers
+
+# Only on an upgrade: a first install has nothing to flash yet. Runs in the background;
+# the unit fails (and run verify reports it) if any device didn't take the update.
+- name: Flash the devices with the new ESPHome
+  ansible.builtin.systemd_service:
+    name: esphome-update-devices.service
+    state: started
+    no_block: true
+  when:
+    - esphome_update_devices | bool
+    - not ansible_check_mode
+    - esphome_version_before.rc == 0
+    - esphome_version_after.rc == 0
+    - esphome_version_before.stdout != esphome_version_after.stdout
+  changed_when: true

@@ -1,0 +1,96 @@
+#!/bin/bash
+# Managed by Ansible (roles/esphome). Flashes every device config in $ESPHOME_CONFIG
+# with the installed ESPHome, one at a time over the air. Devices already on that
+# version are skipped; a device whose running version can't be read is reported and
+# not flashed. The files listed in $ESPHOME_UPDATE_LAST (one per line) go after the
+# rest, and only if all of those succeeded. Exits non-zero if any device failed, so
+# the unit shows up as failed in `run verify`.
+set -u
+shopt -s nullglob
+cd "$ESPHOME_CONFIG" || exit 1
+esphome=$ESPHOME_BIN
+
+installed() { "$esphome" version 2>/dev/null | awk '{print $2}'; }
+
+# The version the device runs, from the banner it logs when the API connects.
+probe() {
+  timeout 20 "$esphome" logs "$1" --device OTA 2>/dev/null |
+    sed -n 's/.*ESPHome version \([^ ]*\).*/\1/p' | head -n1
+}
+
+running() {
+  local v
+  for _ in 1 2 3; do
+    v=$(probe "$1")
+    [[ -n $v ]] && { echo "$v"; return; }
+    sleep 5
+  done
+}
+
+update() {
+  local yaml=$1 have end
+  have=$(running "$yaml")
+  if [[ -z $have ]]; then
+    echo "$yaml: can't read its running version (offline?), not flashing"
+    return 1
+  fi
+  if [[ $have == "$want" ]]; then
+    echo "$yaml: already on $want"
+    return 0
+  fi
+  echo "$yaml: $have -> $want"
+  if ! "$esphome" run --no-logs --device OTA "$yaml"; then
+    echo "$yaml: build or upload failed, the device keeps its old firmware"
+    return 1
+  fi
+  end=$((SECONDS + 180))
+  while ((SECONDS < end)); do
+    sleep 10
+    if [[ $(probe "$yaml") == "$want" ]]; then
+      echo "$yaml: running $want"
+      return 0
+    fi
+  done
+  echo "$yaml: not back on $want after 3 minutes"
+  return 1
+}
+
+is_last() {
+  local f
+  for f in "${last[@]}"; do [[ $f == "$1" ]] && return 0; done
+  return 1
+}
+
+last=()
+if [[ -r ${ESPHOME_UPDATE_LAST:-} ]]; then
+  mapfile -t last < <(grep -v -e '^[[:space:]]*$' -e '^#' "$ESPHOME_UPDATE_LAST")
+fi
+
+# A newer ESPHome installed while this ran gets a second pass.
+for _ in 1 2 3; do
+  want=$(installed)
+  [[ -n $want ]] || { echo "can't read the installed ESPHome version"; exit 1; }
+  failed=0
+  for yaml in *.yaml *.yml; do
+    [[ -f $yaml && $yaml != secrets.yaml && $yaml != secrets.yml ]] || continue
+    is_last "$yaml" && continue
+    update "$yaml" || failed=1
+  done
+  if ((${#last[@]} > 0)); then
+    if ((failed)); then
+      echo "skipping ${last[*]}: an earlier device failed"
+    else
+      for yaml in "${last[@]}"; do
+        if [[ ! -f $yaml ]]; then
+          echo "$yaml: not in $ESPHOME_CONFIG"
+          failed=1
+          continue
+        fi
+        update "$yaml" || failed=1
+      done
+    fi
+  fi
+  [[ $(installed) == "$want" ]] && exit "$failed"
+  echo "ESPHome changed to $(installed) during the run, going again"
+done
+exit 1
